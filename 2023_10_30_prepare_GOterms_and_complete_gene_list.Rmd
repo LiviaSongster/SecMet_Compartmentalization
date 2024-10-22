@@ -1,0 +1,160 @@
+---
+title: "Prepare_complete_gene_list_and_GO_map"
+author: "Livia Songster"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## PREPARE GO MAP FOR ASPERGILLUS
+references:
+https://support.bioconductor.org/p/47810/
+https://bioconductor.org/packages/devel/bioc/vignettes/goseq/inst/doc/goseq.pdf
+```{r import_libraries_and_data}
+library(mgsa)
+library(GenomicFeatures)
+library(biomaRt)
+library(largeList)
+
+# import GO annotation of aspergillus
+goterms <- readGAF("Anidulans_genome_files/FungiDB-65_AnidulansFGSCA4_GO.gaf")
+
+# import genome
+genome <- makeTxDbFromGFF("Anidulans_genome_files/FungiDB-65_AnidulansFGSCA4.gff",
+                          format= "gff3",
+                          dataSource="FungiDB-65",
+                          organism="Aspergillus nidulans")
+
+# find transcripts by gene
+txsByGene=transcriptsBy(genome,"gene")
+
+# calculate gene length
+lengthData <- as.data.frame(matrix(nrow=10988,ncol=2))
+lengthData[,1] <- unlist(names(median(width(txsByGene))))
+lengthData[,2] <- median(width(txsByGene))
+colnames(lengthData) <- c("gene","length")
+
+write.csv(lengthData,"Anidulans_genome_files/Anidulans-65_genelengths.csv",row.names=FALSE)
+
+
+# find and save complete gene list
+complete_genes <- goterms@itemAnnotations
+complete_genes$gene <- row.names(complete_genes)
+
+# save outputs
+write.csv(complete_genes,"Anidulans_genome_files/Anidulans-65_complete_gene_list.csv")
+```
+## Prepare GO map for A nidulans
+FORMAT: a list of lists, where each sublist is named with the gene name and the contents of the list are the associated go terms
+```{r prepare_GO_map}
+# for use within next function (finding empty lists)
+is.integer0 <- function(x) {
+  is.integer(x) && length(x) == 0L
+}
+
+# WRITE A FUNCTION! inputs: gene index, goterm data (default is Anid loaded)
+
+findGOterms <- function(index,gotermdata = goterms@sets,genelist = complete_genes){
+  # populate vector with GO terms associated with that gene
+  # now scan through all go terms and find matches for the index
+  res <- lapply(gotermdata, function(ch) grep(paste0("^",index,"$"), ch))
+  
+  # remove the empties - first identify them
+  empties <- unlist(lapply(res, function(i) is.integer0(i)))
+  # remove them from the list
+  res <- names(res[!empties])
+  
+  # remove first value / all and save as the associated_goterms value
+  associated_goterms <- res[2:length(res)]
+  
+  # add gene name as name of vector
+  return(associated_goterms)
+}
+
+# add names at the end
+
+# check for pxdA:
+pxdAindex <- goterms@itemName2ItemIndex[names(goterms@itemName2ItemIndex) == "AN1156"]
+findGOterms(pxdAindex)
+
+
+# now run the function on first ten genes
+x = 1:10
+test <- lapply(x, function(b) findGOterms(b))
+# takes about 1 second to run per entry - 10 seconds here
+
+# add gene names to list
+names(test) <- complete_genes[x,3]
+```
+
+# READY - run the findGOterms function on the whole list of genes
+I commented it out below so it wouldn't rerun on the Rmarkdown the second time
+
+```{r reformat_go_terms_for_R}
+# # 10,878 genes times 1 second = ~3 hours to run
+# x = 1:nrow(complete_genes)
+# GOmap <- lapply(x, function(b) findGOterms(b))
+# names(GOmap) <- complete_genes[x,3]
+# # finally - export list of gene names, ids, and annotation
+# saveList(object = GOmap, file = "Anidulans_genome_files/Anidulans-65_GOmap.llo", append = FALSE, compress = TRUE)
+
+```
+
+
+``` {r test_GO_import}
+# test import
+list_read <- readList(file = "Anidulans_genome_files/Anidulans-65_GOmap.llo")
+
+# list of GO terms of interest
+query <- c("GO:0006629",
+           "GO:0006665",
+           "GO:0006694",
+           "GO:0006696",
+           "GO:0008202",
+           "GO:0008204",
+           "GO:0008610",
+           "GO:0016125",
+           "GO:0016126",
+           "GO:0016129",
+           "GO:0030148",
+           "GO:0044255",
+           "GO:0097384")
+
+## NOW - test again by finding list of genes associated with a specific go term.
+
+# make dataframe with list of genes associated with each go term
+query_df <- goterms@sets[query]
+
+# for each list, convert number to AN number
+df <- as.data.frame(matrix(nrow=1,ncol=3))
+colnames(df) <- c("GO_ID","Gene_number","Gene_ID")
+counter = 1
+i = 1
+temp_length <- length(unlist(query_df[i]))
+df[counter:temp_length,1] <- names(query_df[i])
+df[counter:temp_length,2] <- query_df[i]
+counter = counter + temp_length
+
+# go through each list item one at a time
+for (i in 2:length(query_df)) {
+  # populate df: paste GO_ID and Gene_numbers into each row
+  temp_length <- length(unlist(query_df[i]))
+  df[counter:(counter+temp_length-1),1] <- names(query_df[i])
+  df[counter:(counter+temp_length-1),2] <- query_df[i]
+  counter = counter + temp_length
+}
+
+# match gene number to gene ID
+for (j in 1:nrow(df)) {
+  index <- df[j,2]
+  df[j,3] <- names(goterms@itemName2ItemIndex[index])
+}
+
+# export genelist for that go term as an example
+write.csv(df,"Anidulans_genome_files/lipid_goterms_genelist.csv",row.names=FALSE)
+
+```
+

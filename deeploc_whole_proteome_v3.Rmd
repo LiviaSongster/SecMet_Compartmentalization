@@ -1,0 +1,1407 @@
+---
+title: "DeepLoc_wholeproteome"
+author: "Livia Songster"
+date: "`r Sys.Date()`"
+output:
+    html_document:
+      toc: true
+      number_sections: true
+      toc_depth: 2
+      theme: cerulean
+      toc_float: true
+---
+
+# Goals, installation, setup
+<b>Goal:</b>
+Run DeepLoc2 prediction for all proteins in genomes of <i>Aspergillus nidulans (FGSC A4)</i>, <i>Aspergillus fumigatus (Af293)</i>, and <i>Alternaria alternata (SRC1lrK2f)</i>.
+
+<b>Citation:</b>
+Vineet Thumuluri, José Juan Almagro Armenteros, Alexander Rosenberg Johansen, Henrik Nielsen, Ole Winther. <i>DeepLoc 2.0: multi-label subcellular localization prediction using protein language models</i>. Nucleic Acids Research, 2022;, gkac278, https://doi.org/10.1093/nar/gkac278
+
+<b>Steps:</b>
+
+1. download proteome for each species
+2. break down proteome into multiple small fastas so the code can run faster
+3. run DeepLoc2
+4. compile results
+
+The following code chunks were run using bash command line (I have a PC/Windows, so I used [Git Bash](https://git-scm.com/downloads) as my terminal) on the [TSCC supercomputer](https://www.sdsc.edu/support/user_guides/tscc.html).
+
+Outputs are suppressed on this R markdown document because I was running things on the supercomputer & didn't want to rerun the code in this doc. Outputs will be listed below each line of code where necessary.
+
+<b>Useful hyperlinks:</b>
+
+- [Miniconda](https://docs.anaconda.com/free/miniconda/)
+- [bioconda](https://bioconda.github.io/index.html)
+- [ncbi datasets](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/download-and-install/)
+- [Request DeepLoc2 install](https://services.healthtech.dtu.dk/services/DeepLoc-2.0/)
+
+## Setup a supercomputer account for bioinformatics
+```{bash eval = FALSE}
+# log into the supercomputer
+# example is below - replace $USER with your personal login at your own supercomputer
+ssh $USER@login.tscc.sdsc.edu
+
+# find account name
+sacctmgr show assoc user=$USER format=account,user
+
+# start an interactive session so we don't bog down the login node
+# this line will vary depending on the supercomputer
+# for TSCC, replace $ACCOUNT with your account
+srun --partition=hotel --pty --nodes=2 --ntasks-per-node=2 -t 02:00:00 --qos=hotel --wait=0 --account=$ACCOUNT --export=ALL /bin/bash
+
+# Install miniconda
+# first make a directory
+mkdir -p ~/miniconda3
+
+# download miniconda
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+
+# add to bash
+bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
+
+# remove installation file
+rm -rf ~/miniconda3/miniconda.sh
+
+# initialize conda
+~/miniconda3/bin/conda init bash
+
+# logout to reload bash
+logout
+
+```
+
+## Installing DeepLoc2
+Before running the following code, log out of the supercomputer, and close & reopen the bash window, to load conda correctly.
+
+```{bash eval = FALSE}
+# log into supercomputer again
+ssh $USER@login.tscc.sdsc.edu
+
+# check conda version
+conda -V
+# OUTPUT: 
+# conda 24.1.2
+
+# install bioconda
+conda config --add channels defaults
+conda config --add channels bioconda
+conda config --add channels conda-forge
+conda config --set channel_priority strict
+
+# fill out request form for deeploc2
+# https://services.healthtech.dtu.dk/services/DeepLoc-2.0/
+
+# download deeploc2 locally after registering & receiving email
+
+# transfer deeploc installation file to supercomputer (use local Bash, not TSCC login)
+scp deeploc-2.0.All.tar.gz osongste@tscc-login.sdsc.edu:~
+
+
+# now while logged in at TSCC:
+# unzip and install
+tar -xzf deeploc-2.0.All.tar.gz
+
+# can also run:
+pip install deeploc-2.0.All.tar.gz
+
+# remove install file
+rm deeploc-2.0.All.tar.gz
+```
+
+## DeepLoc2.0 Readme.md
+```{bash eval = FALSE}
+DeepLoc 2.0 README.md
+===========
+
+DeepLoc 2.0 predicts the subcellular localization(s) of eukaryotic proteins. DeepLoc 2.0 is a multi-label predictor, which means that is able to predict one or more localizations for any given protein. It can differentiate between 10 different localizations: Nucleus, Cytoplasm, Extracellular, Mitochondrion, Cell membrane, Endoplasmic reticulum, Chloroplast, Golgi apparatus, Lysosome/Vacuole and Peroxisome. Additionally, DeepLoc 2.0 can predict the presence of the sorting signal(s) that had an influence on the prediction of the subcellular localization(s).
+
+The DeepLoc 2.0 tool can be run using two different models.
+
+The 'Accurate' model utilizes the ProtT5-XL-Uniref50 transformer (ProtT5). This model provides a more accurate prediction at the expense of longer computation time due to the size of the model (3 billion parameters). Use case: high-quality prediction for a small number of proteins.
+The 'Fast' model utilizes the 33-layer ESM transformer (ESM1b). This smaller model (650 million parameters) has the advantage of a faster computation time with a slight decrease in accuracy compared to the ProtT5 model. Use case: high-throughput prediction for a larger number of proteins.
+
+The DeepLoc 2.0 server requires protein sequence(s) in fasta format, and can not handle nucleic acid sequences.
+
+Publication
+------------
+
+Vineet Thumuluri, José Juan Almagro Armenteros, Alexander Rosenberg Johansen, Henrik Nielsen, Ole Winther, DeepLoc 2.0: multi-label subcellular localization prediction using protein language models, Nucleic Acids Research, 2022;, gkac278, https://doi.org/10.1093/nar/gkac278
+
+More information about the method can be found at:
+
+	https://services.healthtech.dtu.dk/service.php?DeepLoc-2.0
+
+Pre-installation
+----------------
+
+DeepLoc 2.0 will run and has been tested under Linux and OS X. The only prerequisite is to have python3.6 or above installed.
+
+
+Installation
+------------
+
+The installation procedure is:
+
+
+  1. Install DeepLoc 2.0 package:
+        pip install deeploc2.tar.gz
+     or within the deeploc2_package directory:
+         pip install .
+
+  2. Test DeepLoc 2.0 by running:
+     deeploc2 -f test.fasta
+     
+     the result should look like the file in the 'output' directory
+
+This will download only the 'Fast' model (ESM1b). The 'Accurate' model (ProtT5) uses more memory (approx. 32GB), therefore, it is not recommended for personal computers with limited memory. The 'Accurate' model will be downloaded the first time that the user chooses it at run time.
+
+Running
+--------
+
+DeepLoc will be installed under the name 'deeploc2'. It has 4 possible arguments:
+
+ * -f, --fasta. Input in fasta format of the proteins.
+ * -o, --output. Output folder name.
+ * -m, --model. High-quality (Accurate) model or high-throughput (Fast) model. Default: Fast.
+ * -p, --plot. Plot and save attention values for each individual protein. 
+
+Output
+-------
+
+The output is a tabular file with the following format:
+
+ * 1st column: Protein ID.
+ * 2nd column: Predicted localization(s).
+ * 3rd column: Predicted sorting signal(s).
+ * 4th-13th column: Probability for each of the individual localizations. 
+
+If --plot is defined, a plot and a text file with the sorting signal importance for each protein will be generated.
+
+Problems and questions
+----------------------
+
+In case of technical problems (bugs etc.) please contact packages@cbs.dtu.dk.
+
+Questions on the scientific aspects of the DeepLoc 2.0 method should go to Henrik
+Nielsen, hennin@dtu.dk.
+
+```
+
+## Test DeepLoc2 on example seqs
+```{bash eval = FALSE}
+# change into deeploc directory
+cd deeploc-2.0.All
+
+# run on example fasta
+deeploc2 -f test.fasta
+
+# also run using Accurate model (first time you run it, it will install)
+deeploc2 -f test.fasta -m Accurate
+```
+
+
+# Download <i>A. nidulans</i> proteome
+You can do this one of two ways: using the command line to access the proteome stored at FungiDB (recommended; this is what I did; second code chunk to come, below NCBI directions) OR you can download the fasta from NCBI. NCBI directions are below.
+
+## Download proteome from NCBI (not recommended)
+
+1. Search species (ie, <i>Aspergillus nidulans</i>) at [NCBI datasets](https://www.ncbi.nlm.nih.gov/datasets/).
+2. Scroll down and click on [protein sequences](https://www.ncbi.nlm.nih.gov/protein/?term=txid162425[organism:exp]), which should take you to a protein search
+3. On the left side, under Source Database, click "RefSeq"
+4. On the top right, click Send to > File > Format: Fasta > Create file
+5. Save the file to your Documents folder on your computer
+6. Transfer the file to the supercomputer using the following command:
+
+```{bash eval = FALSE}
+# move to directory where the file is saved
+cd ~/Documents
+
+# check the file is there using ls to list all files
+ls
+
+# transfer file to supercomputer home directory
+scp sequence.fasta $USER@login.tscc.sdsc.edu:~
+
+```
+
+## Download proteome from FungiDB (recommended)
+
+This is my recommended way of downloading the proteome. FundiDB is especially useful because all the proteins will be numbered with our familiar AN numbers (ie, AN1156) and not the ANIA_# or refseq IDs.
+
+```{bash eval = FALSE}
+# log into supercomputer (if not logged in already)
+ssh $USER@login.tscc.sdsc.edu
+
+# move to scratch directory (where we can store bigger files)
+cd /tscc/lustre/scratch/$USER
+
+# make directory to store whole proteome
+mkdir -p ./whole_proteome
+
+# move into that directory
+cd whole_proteome
+
+# download proteome using curl
+curl -O https://fungidb.org/common/downloads/Current_Release/AnidulansFGSCA4/fasta/data/FungiDB-67_AnidulansFGSCA4_AnnotatedProteins.fasta
+
+# check number of genes in fasta
+grep '>' FungiDB-67_AnidulansFGSCA4_AnnotatedProteins.fasta | wc -l
+# OUTPUT:
+# 10712
+
+# split fasta into smaller files containing 200 sequences each
+# this is because some scripts run out of memory when you try to run on a fasta with >200 seqs
+
+# prefix of each file will be chunk
+awk 'BEGIN {n=0;} /^>/ {if(n%200==0){file=sprintf("chunk%d.fa",n);} print >> file; n++; next;} { print >> file; }' < FungiDB-67_AnidulansFGSCA4_AnnotatedProteins.fasta
+
+# make another directory to hold these smaller chunks
+mkdir -p ./anid_chunks
+
+# move files into that folder
+mv chunk*.fa ./anid_proteome
+
+```
+
+Repeat for <i>A. fumigatus</i> and <i>A. alternata</i>:
+```{bash eval = FALSE}
+# while logged into TSCC:
+# change directory to scratch
+cd /tscc/lustre/scratch/osongste
+
+# download files from fungidb
+curl -O https://fungidb.org/common/downloads/Current_Release/AalternataSRC1lrK2f/fasta/data/FungiDB-67_AalternataSRC1lrK2f_AnnotatedProteins.fasta
+curl -O https://fungidb.org/common/downloads/Current_Release/AfumigatusAf293/fasta/data/FungiDB-67_AfumigatusAf293_AnnotatedProteins.fasta
+
+# I only plan to use A. fumigatus Af293 for now, but here is A.fum A1163 link as well:
+curl -O https://fungidb.org/common/downloads/Current_Release/AfumigatusA1163/fasta/data/FungiDB-67_AfumigatusA1163_AnnotatedProteins.fasta
+
+# check number genes in each file
+grep '>' FungiDB-67_AnidulansFGSCA4_AnnotatedProteins.fasta | wc -l
+# OUTPUT:
+# 10712
+
+grep '>' FungiDB-67_AalternataSRC1lrK2f_AnnotatedProteins.fasta | wc -l
+# OUTPUT:
+# 13466
+
+grep '>' FungiDB-67_AfumigatusA1163_AnnotatedProteins.fasta | wc -l
+# OUTPUT: 
+# 9907
+
+grep '>' FungiDB-67_AfumigatusAf293_AnnotatedProteins.fasta | wc -l
+# OUTPUT:
+# 9840
+
+# split fastas into smaller 200 seq chunks
+awk 'BEGIN {n=0;} /^>/ {if(n%200==0){file=sprintf("afumchunk%d.fa",n);} print >> file; n++; next;} { print >> file; }' < FungiDB-67_AfumigatusAf293_AnnotatedProteins.fasta
+
+awk 'BEGIN {n=0;} /^>/ {if(n%200==0){file=sprintf("aaltchunk%d.fa",n);} print >> file; n++; next;} { print >> file; }' < FungiDB-67_AalternataSRC1lrK2f_AnnotatedProteins.fasta
+
+# move into new directories
+mkdir -p ./afum_chunks
+mv afumchunk*.fa ./afumAf293_proteome
+
+mkdir -p ./aalt_chunks
+mv aaltchunk*.fa ./aalt_proteome
+
+```
+
+
+# Run DeepLoc2 on proteomes
+
+First I want to test how long it takes to run 200 sequences on one node
+```{bash eval = FALSE}
+# sometimes this is a useful command: deduplicate sequences within fasta
+# replace allsecmetgenes.fasta with the original fasta name
+# replace genes_deduplicated.fa with the new file name
+awk 'BEGIN {i = 1;} { if ($1 ~ /^>/) { tmp = h[i]; h[i] = $1; } else if (!a[$1]) { s[i] = $1; a[$1] = "1"; i++; } else { h[i] = tmp; } } END { for (j = 1; j < i; j++) { print h[j]; print s[j]; } }' < allsecmetgenes.fasta > genes_deduplicated.fa
+
+# another optional one: Remove asterisks from fasta
+# I don't need this for fungidb files; I use it on seqs from other people
+# NOTE: this will overwrite your file
+sed -i 's/\*//g' fastaname.fasta
+
+# start interactive job, if you haven't already
+sacctmgr show assoc user=osongste format=account,user
+#   Account       User
+#---------- ----------
+#    htl160   osongste
+
+srun --partition=hotel --pty --nodes=2 --ntasks-per-node=2 -t 02:00:00 --qos=hotel --wait=0 --account=htl160 --export=ALL /bin/bash
+
+# run deeploc on one of the files
+# make output folder
+mkdir ./output
+deeploc2 -f chunk1.fa -m Fast -p -o
+
+# RUNTIME ON 1 NODE: approx 30 minutes
+
+# RUNTIME ON 2 NODES: approx 15 minutes
+
+```
+
+Next I wrote bash scripts to loop & run deeploc on all the fasta chunks. Bash scripts are pasted in the next section for simplicity.
+
+```{bash eval = FALSE}
+# transfer bash scripts to TSCC, if you haven't already
+
+# check number of chunks in each directory to estimate runtime
+# cd to directory; anid example below
+cd /tscc/lustre/scratch/osongste/whole_proteome/anid_proteome
+ls -1 | wc -l
+# OUTPUTS:
+# Afum: 51
+# Anid: 54
+# Aalt: 68
+
+# edit scripts to include sufficient walltime
+nano deeploc_anid_v1.sh
+
+# once ready, submit using sbatch
+sbatch deeploc_anid_v1.sh
+sbatch deeploc_afum_v1.sh
+sbatch deeploc_aalt_v1.sh
+
+# check job status using squeue
+squeue -u osongste
+
+# check number of output files completed so far; anid example
+cd /tscc/lustre/scratch/osongste/whole_proteome/anid_proteome/output
+ls -d results* | wc -l
+# this will print the number of files in the current directory containing the string "results"
+
+```
+
+## Bash scripts
+
+The following text was written in [Sublime Text](https://www.sublimetext.com/), saved as .sh files, and transferred to TSCC via scp.
+
+Make sure to allot ~20-30 minutes per fasta file for the walltime, with 2 nodes and 2 tasks, to avoid timing out.
+
+### <i>A. nidulans</i>
+```{bash eval = FALSE}
+#!/bin/bash
+
+#SBATCH --job-name=deeploc-anid-v1			# Optional job name
+#SBATCH --partition=hotel					# Partition name
+#SBATCH --qos=hotel							# QOS name
+#SBATCH --nodes=2							# Number of nodes
+#SBATCH --ntasks=2							# Total number of tasks
+#SBATCH --export=ALL
+#SBATCH --account=htl160					# my account
+#SBATCH --time=48:00:00						# Walltime limit
+#SBATCH --mail-type=ALL						# Optional, Send email at run, end
+#SBATCH --mail-user=osongste@ucsd.edu		# Optional, email address
+
+# define variables
+data=/tscc/lustre/scratch/osongste/whole_proteome/anid_proteome
+dir=/tscc/lustre/scratch/osongste/whole_proteome/anid_proteome/output
+
+# make directory for output
+mkdir -p $dir
+
+# run deeploc
+
+for file in $data/chunk*.fa; do
+    deeploc2 -f "$file" -p -m Fast -o $dir
+done
+
+#deeploc2 -f $data/*.fa -m Fast -p -o $dir
+# -p will generate plots
+# -o specifies output
+# -f specifies fasta
+# -m specifies model: Accurate or Fast
+```
+
+### <i>A. fumigatus</i>
+```{bash eval = FALSE}
+#!/bin/bash
+
+#SBATCH --job-name=deeploc-afum-v1			# Optional job name
+#SBATCH --partition=hotel					# Partition name
+#SBATCH --qos=hotel							# QOS name
+#SBATCH --nodes=2							# Number of nodes
+#SBATCH --ntasks=2							# Total number of tasks
+#SBATCH --export=ALL
+#SBATCH --account=htl160					# my account
+#SBATCH --time=48:00:00						# Walltime limit
+#SBATCH --mail-type=ALL						# Optional, Send email at run, end
+#SBATCH --mail-user=osongste@ucsd.edu		# Optional, email address
+
+# define variables
+data=/tscc/lustre/scratch/osongste/whole_proteome/afumAf293_proteome
+dir=/tscc/lustre/scratch/osongste/whole_proteome/afumAf293_proteome/output
+
+# make directory for output
+mkdir -p $dir
+
+# run deeploc
+
+for file in $data/afumchunk*.fa; do
+    deeploc2 -f "$file" -p -m Fast -o $dir
+done
+
+#deeploc2 -f $data/*.fa -m Fast -p -o $dir
+# -p will generate plots
+# -o specifies output
+# -f specifies fasta
+# -m specifies model: Accurate or Fast
+```
+
+### <i>A. alternata</i>
+```{bash eval = FALSE}
+#!/bin/bash
+
+#SBATCH --job-name=deeploc-aalt-v1			# Optional job name
+#SBATCH --partition=hotel					# Partition name
+#SBATCH --qos=hotel							# QOS name
+#SBATCH --nodes=2							# Number of nodes
+#SBATCH --ntasks=2							# Total number of tasks
+#SBATCH --export=ALL
+#SBATCH --account=htl160					# my account
+#SBATCH --time=72:00:00						# Walltime limit
+#SBATCH --mail-type=ALL						# Optional, Send email at run, end
+#SBATCH --mail-user=osongste@ucsd.edu		# Optional, email address
+
+# define variables
+data=/tscc/lustre/scratch/osongste/whole_proteome/aalt_proteome
+dir=/tscc/lustre/scratch/osongste/whole_proteome/aalt_proteome/output
+
+# make directory for output
+mkdir -p $dir
+
+# run deeploc
+
+for file in $data/aaltchunk*.fa; do
+    deeploc2 -f "$file" -p -m Fast -o $dir
+done
+
+#deeploc2 -f $data/*.fa -m Fast -p -o $dir
+# -p will generate plots
+# -o specifies output
+# -f specifies fasta
+# -m specifies model: Accurate or Fast
+```
+
+## Compile deeploc results (.csv)
+```{bash eval = FALSE}
+# make directory to hold anid results
+cd ~
+mkdir ./anid_results
+mkdir ./afum_results
+mkdir ./aalt_results
+
+# copy files
+cd /tscc/lustre/scratch/osongste/whole_proteome/anid_proteome
+cp ./output/results* ~/anid_results
+cp ./output2/results* ~/anid_results
+
+cd /tscc/lustre/scratch/osongste/whole_proteome/aalt_proteome
+cp ./output/results* ~/aalt_results
+
+# STILL RUNNING CURRENTLY
+cd /tscc/lustre/scratch/osongste/whole_proteome/afumAf293_proteome
+cp ./output/results* ~/afum_results
+
+```
+
+
+# Transfer files from supercomputer
+
+Run this on a local instance of bash (ie, not logged onto TSCC/supercomputer)
+```{bash eval = FALSE}
+scp -r osongste@login.tscc.sdsc.edu:~/afum_results ~/Documents
+scp -r osongste@login.tscc.sdsc.edu:~/aalt_results ~/Documents
+scp -r osongste@login.tscc.sdsc.edu:~/anid_results ~/Documents
+```
+
+
+# in R: compile results into one file
+```{r compile_results}
+#save the names of the files you want to import
+file_names_anid <- list.files(path = "anid_results", pattern=".csv", full.names = TRUE, recursive = FALSE) #where you have your files
+
+#combines all the csv files and adds a column at the end with the name of the file the data came from
+anid = NULL
+anid <- do.call(rbind, lapply(file_names_anid, function(x) cbind(read.csv(x), SourceFile=strsplit(x,'\\.')[[1]][1])))
+
+# repeat for fum:
+file_names_afum <- list.files(path = "afum_results", pattern=".csv", full.names = TRUE, recursive = FALSE) #where you have your files
+afum = NULL
+afum <- do.call(rbind, lapply(file_names_afum, function(x) cbind(read.csv(x), SourceFile=strsplit(x,'\\.')[[1]][1])))
+
+# alt:
+file_names_aalt <- list.files(path = "aalt_results", pattern=".csv", full.names = TRUE, recursive = FALSE) #where you have your files
+aalt = NULL
+aalt <- do.call(rbind, lapply(file_names_aalt, function(x) cbind(read.csv(x), SourceFile=strsplit(x,'\\.')[[1]][1])))
+
+# check if number of proteins matches original fasta
+# for anid:
+nrow(anid) == 10712
+
+# afum:
+nrow(afum) == 9840
+
+# aalt:
+nrow(aalt) == 13466
+
+# check for dups
+length(unique(anid$Protein_ID)) == 10712
+length(unique(afum$Protein_ID)) == 9840
+length(unique(aalt$Protein_ID)) == 13466
+
+# proteins for austinol
+list <- c("AN8376-T-p1",
+          "AN8380-T-p1",
+          "AN11214-T-p1",
+          "AN11205-T-p1",
+          "AN9256-T-p1",
+          "AN11647-T-p1",
+          "AN9257-T-p1",
+          "AN11217-T-p1",
+          "AN11206-T-p1",
+          "AN9259-T-p1",
+          "AN11648-T-p1",
+          "AN9260-T-p1",
+          "AN9261-T-p1")
+anid[which(anid$Protein_ID %in% list),c("Protein_ID","Localizations","Signals")]
+
+
+```
+Use the next block of code if you need to identify which chunks did not run properly.
+```{r find_missing_chunks}
+# load in proteome fasta
+library(seqinr)
+anid_seqs <- read.fasta("GenomeFiles/FungiDB-68_AnidulansFGSCA4_AnnotatedProteins.fasta",
+                   seqtype="AA")
+afum_seqs <- read.fasta("GenomeFiles/FungiDB-68_AfumigatusAf293_AnnotatedProteins.fasta",
+                   seqtype="AA")
+aalt_seqs <- read.fasta("GenomeFiles/FungiDB-68_AalternataSRC1lrK2f_AnnotatedProteins.fasta",
+                   seqtype="AA")
+
+
+# afum is missing 200 genes which means 2 chunks did not run...
+# identify which genes are missing:
+
+# list of afum genes
+afum_genes <- names(afum_seqs)
+# find which ones are missing
+missing_rows <- which(!afum_genes %in% afum$Protein_ID)
+
+# make a list of all the chunk names in fumigatus
+chunk_list <- seq(from = 1, by = 200, length.out = 51)
+
+# find which chunks I still need to run
+missing_chunks <- which(chunk_list %in% missing_rows)
+chunk_list[missing_chunks]
+
+# looks like the first and last chunks did not run! 
+# I will run these on an interactive session quick & then copy the data over
+# deeploc2 -m Fast -p -o aalt_results_2/ -f /tscc/lustre/scratch/osongste/whole_proteome/aalt_proteome/aaltchunk0.fa
+# deeploc2 -m Fast -p -o aalt_results_2/ -f /tscc/lustre/scratch/osongste/whole_proteome/aalt_proteome/aaltchunk10000.fa
+
+```
+
+Use the next chunk to identify if a chunk has been run more than once / duplicates
+```{r find_duplicates}
+# find which files are duplicates
+test <- afum[,c("Protein_ID","SourceFile")]
+# Load the dplyr package
+library(dplyr)
+
+# Assuming 'test' is your dataframe
+
+# Identify duplicate Protein_ID entries
+duplicate_proteins <- test %>%
+  group_by(Protein_ID) %>%
+  filter(n() > 1) %>%
+  arrange(Protein_ID)
+
+# Extract the names of the source files for duplicated Protein_IDs
+duplicate_sources <- unique(duplicate_proteins$SourceFile)
+
+# identify which sourcefiles pair together and keep only one
+duplicate_sources
+```
+
+
+Next get list of gene IDs from FungiDB and descriptions for all genes. These are saved in the GO annotations stored at FungiDB.
+
+First curl the GO maps from FungiDB using bash:
+```{bash eval = FALSE}
+mkdir ~/Documents/GO_maps
+cd ~/Documents/GO_maps
+
+curl -O https://fungidb.org/common/downloads/Current_Release/AnidulansFGSCA4/gaf/FungiDB-67_AnidulansFGSCA4_GO.gaf.gz
+
+curl -O https://fungidb.org/common/downloads/Current_Release/AnidulansFGSCA4/gaf/FungiDB-67_AnidulansFGSCA4_Curated_GO.gaf.gz
+
+curl -O https://fungidb.org/common/downloads/Current_Release/AfumigatusAf293/gaf/FungiDB-67_AfumigatusAf293_GO.gaf.gz
+
+curl -O https://fungidb.org/common/downloads/Current_Release/AfumigatusAf293/gaf/FungiDB-67_AfumigatusAf293_Curated_GO.gaf.gz
+
+curl -O https://fungidb.org/common/downloads/Current_Release/AalternataSRC1lrK2f/gaf/FungiDB-67_AalternataSRC1lrK2f_GO.gaf.gz
+
+curl -O https://fungidb.org/common/downloads/Current_Release/AalternataSRC1lrK2f/gaf/FungiDB-67_AalternataSRC1lrK2f_Curated_GO.gaf.gz
+
+```
+
+Now import GO maps into R to extract any useful information
+
+```{r get_gene_annots}
+library(mgsa)
+
+get_gene_annot <- function(file1, file2, species_seqs, species) {
+  # file1 is GO annotations
+  # file 2 is curated GO
+  # species_seqs is multi fasta for that species, eg. anid_seqs
+  # species_seqs = aalt_seqs
+  # species="aalt"
+  # file1="~/GO_maps/FungiDB-67_AalternataSRC1lrK2f_GO.gaf.gz"
+  # file2="~/GO_maps/FungiDB-67_AalternataSRC1lrK2f_Curated_GO.gaf.gz"
+  
+  goterms_1 <- readGAF(file1)
+  
+  # get item annotations
+  complete_genes_1 <- goterms_1@itemAnnotations
+  complete_genes_1$Gene <- row.names(complete_genes_1)
+  
+  # if alternaria, skip the second one
+  if (species != "aalt") {
+    goterms_2 <- readGAF(file2)
+    complete_genes_2 <- goterms_2@itemAnnotations
+    complete_genes_2$Gene <- row.names(complete_genes_2)
+  
+    # merge together
+    cgenes <- rbind(complete_genes_1, complete_genes_2)
+    cgenes <- unique(cgenes)
+  } else {
+    cgenes <- unique(complete_genes_1)
+  }
+  
+  
+  # now extract annotations from species_seqs file, defined under proteome
+  annot_list <- lapply(species_seqs, function(seq_item) {
+    attr(seq_item, "Annot")
+  })
+  
+  # split by | into different columns
+  split_entry <- function(entry) {
+    unlist(lapply(strsplit(entry, " | ", fixed = TRUE), function(x) {
+      unlist(lapply(strsplit(x, "=", fixed = TRUE), function(y) {
+        y[length(y)]
+      }))
+    }))
+  }
+  
+  # Convert the list to a dataframe
+  annot_df <- as.data.frame(t(sapply(annot_list, function(entry) {
+    entry <- gsub("^>", "", entry) # Remove ">" at the beginning of the entry
+    split_entry(entry)
+  })))
+  
+  newcols <- c("Protein_ID",
+               "Transcript",
+               "Gene",
+               "Organism",
+               "Gene_product",
+               "Transcript_product",
+               "Location",
+               "Protein_length",
+               "Sequence_SO",
+               "SO",
+               "Is_pseudo")
+  
+  colnames(annot_df) <- newcols
+
+  
+  colkeep <- c("Protein_ID",
+               "Gene",
+               "Gene_product",
+               "Location",
+               "Protein_length")
+  
+  annot_df <- annot_df[,colkeep]
+  # merge both tables together
+  annot_df2 <- merge(annot_df,cgenes,by="Gene", all.x = TRUE)
+  
+  # remove the name column since it is a duplicate of gene_product
+  annot_df2 <- annot_df2[,1:6]
+  
+  return(annot_df2)
+  
+}
+
+annot_anid <- get_gene_annot("GO_maps/FungiDB-67_AnidulansFGSCA4_GO.gaf.gz",
+                             "GO_maps/FungiDB-67_AnidulansFGSCA4_Curated_GO.gaf.gz",
+                             anid_seqs,
+                             "anid")
+annot_afum <- get_gene_annot("GO_maps/FungiDB-67_AfumigatusAf293_GO.gaf.gz",
+                             "GO_maps/FungiDB-67_AfumigatusAf293_Curated_GO.gaf.gz",
+                             afum_seqs,
+                             "afum")
+annot_aalt <- get_gene_annot("GO_maps/FungiDB-67_AalternataSRC1lrK2f_GO.gaf.gz",
+                             "GO_maps/FungiDB-67_AalternataSRC1lrK2f_Curated_GO.gaf.gz",
+                             aalt_seqs,
+                             "aalt")
+
+
+```
+Next, merge these annotations onto the DeepLoc results.
+
+```{r merge_results}
+merged_aalt <- merge(aalt, annot_aalt, by="Protein_ID", all=T)
+merged_afum <- merge(afum, annot_afum, by="Protein_ID", all=T)
+merged_anid <- merge(anid, annot_anid, by="Protein_ID", all=T)
+# add a column indicating Peroxisomal targeting seq is present
+merged_anid$PTS <- ifelse(grepl("Perox", merged_anid$Signals), "PTS", "none")
+merged_afum$PTS <- ifelse(grepl("Perox", merged_afum$Signals), "PTS", "none")
+merged_aalt$PTS <- ifelse(grepl("Perox", merged_aalt$Signals), "PTS", "none")
+
+# add columns indicating high or low PTS score
+merged_anid$conf <- ifelse(merged_anid$Peroxisome >= 0.5, "high", "low")
+merged_afum$conf <- ifelse(merged_afum$Peroxisome >= 0.5, "high", "low")
+merged_aalt$conf <- ifelse(merged_aalt$Peroxisome >= 0.5, "high", "low")
+
+# save the final compiled results
+write.csv(merged_anid, 'Output/anid_compiled_deeploc.csv', row.names=FALSE)
+write.csv(merged_afum, 'Output/afum_compiled_deeploc.csv', row.names=FALSE)
+write.csv(merged_aalt, 'Output/aalt_compiled_deeploc.csv', row.names=FALSE)
+
+```
+
+# Add in silico AntiSmash predictions
+```{r antismash_preds}
+# first read in the list of secmet clusters
+clusters_anti <- read.csv("GenomeFiles/all_clusters_genelist_antismashv7.1.0.csv",header=TRUE)
+known_clusters <- read.csv("GenomeFiles/anid_known_clusters_manually_labeled.csv")
+
+# append gene lists together and label source as either antismash or manual
+clusters_anti <- clusters_anti[,c("Cluster","old_locus_tags","type")]
+clusters_anti$Source <- "antismash_v7.1.0"
+known_clusters_manual <- known_clusters[,c("BackboneGeneName","GeneID","type")]
+known_clusters_manual$Source <- "manual_annot_from_lit"
+
+# rename columns to match between the two
+colnames(clusters_anti)[1:2] <- c("Cluster.name","GeneID")
+colnames(known_clusters_manual)[1:2] <- c("Cluster.name","GeneID")
+
+# merge them together
+clusters <- rbind(clusters_anti,known_clusters_manual)
+
+# add deeploc results on top
+# deeploc <- read.csv("Anidulans_genome_files/anid_compiled_deeploc.csv")
+deeploc_mini <- merged_anid[,c("Gene",
+                           "Localizations",
+                           "Signals",
+                           "Peroxisome",
+                           "PTS")]
+head(deeploc_mini)
+
+
+# read in files for afum and aalt
+
+# predicted with antismash
+anti_anid <- read.delim("Nidulans_anti/SummaryTable_anid.tsv",sep="\t")
+anti_aalt <- read.delim("Alternata_anti/SummaryTable_aalt.tsv",sep="\t")
+anti_afum <- read.delim("Fumi_anti/SummaryTable_afum.tsv",sep="\t")
+
+library(tidyr)
+# remove the brackets and '
+anti_anid$Gene <- gsub("\\[|\\]|'", "", anti_anid$Gene)
+
+# reformat Gene column to separate rows
+anti_anid <- separate_rows(anti_anid, Gene, sep = ", ")
+
+# repeat for afum
+anti_afum$Gene <- gsub("\\[|\\]|'", "", anti_afum$Gene)
+anti_afum <- separate_rows(anti_afum, Gene, sep = ", ")
+
+# repeat for aalt
+anti_aalt$Gene <- gsub("\\[|\\]|'", "", anti_aalt$Gene)
+anti_aalt <- separate_rows(anti_aalt, Gene, sep = ", ")
+
+# how many overlaps between known and in silico clusters?
+# add compound names for clusters in antismash results
+# First, subset the data frames to include only the relevant columns
+known_anid_subset <- known_clusters[, c("GeneID", "CompoundName")]
+anti_anid_subset <- anti_anid[, c("Gene", "BGC")]
+
+# Merge the two data frames based on the "GeneID" column
+matched_entries_anid <- merge(known_anid_subset, anti_anid_subset, by.x = "GeneID", by.y = "Gene", all = FALSE)
+# remove Gene and deduplicate BGCs and compounds
+matched_entries_anid <- unique(matched_entries_anid[,c(2:3)])
+
+# # add CompoundName to anti_anid
+# anti_anid2 <- merge(anti_anid, matched_entries_anid, by="BGC",all=TRUE)
+
+# repeat for afum
+
+# known afum
+known_afum <- read.csv("GenomeFiles/afum_known_clusters_manually_labeled.csv")
+
+known_afum_subset <- known_afum[, c("geneID", "CompoundName")]
+anti_afum_subset <- anti_afum[, c("BGC","Gene")]
+matched_entries_afum <- merge(known_afum_subset, anti_afum_subset,by.x = "geneID", by.y = "Gene", all = FALSE)
+matched_entries_afum <- matched_entries_afum[,c(2:3)]
+matched_entries_afum <- unique(matched_entries_afum)
+# anti_afum2 <- merge(anti_afum, matched_entries_afum, by="BGC",all=TRUE)
+
+# 
+# # merge results onto known clusters for afum and anid
+# # first remove prev localization columns from known clusters, which I had added in excel (we will add this back later)
+# known_anid <- read_excel("deeploc_known_clusters_anid_afum.xlsx", sheet = "known_anid")
+# known_anid <- known_anid[,c(1:7)]
+# 
+# # fill in empty refs (fix later)
+# known_anid$Reference <- ifelse(is.na(known_anid$Reference), "missingpaper", known_anid$Reference)
+# 
+# 
+
+# # merge known and antismash clusters by Gene and CompoundName
+# # bgc_anid <- known_anid %>% right_join(anti_anid2, by=c("Gene","CompoundName"))
+# bgc_anid <- merge(known_anid, anti_anid,by="Gene",all=TRUE)
+# 
+# # replace empty Reference cells with AntiSmash
+# bgc_anid$Reference <- ifelse(is.na(bgc_anid$Reference), "AntiSmash", bgc_anid$Reference)
+# 
+# # replace empty BGC entries for genes added manually
+# bgc_anid$BGC <- ifelse(is.na(bgc_anid$BGC), "none", bgc_anid$BGC)
+
+# get list of clusters for fumigatus
+anti_afum_subset$Source <- "antismash_v5.1.2"
+known_afum_subset2 <- known_afum[, c("BackboneGeneName","geneID")]
+known_afum_subset2$Source <- "manual_annot_from_lit"
+colnames(known_afum_subset2)[1:2] <- c("Cluster.name","GeneID")
+colnames(anti_afum_subset)[1:2] <- c("Cluster.name","GeneID")
+
+
+
+bgc_afum <- rbind(anti_afum_subset,known_afum_subset2)
+
+# check current tables for in silico and known clusters
+bgc_anid <- clusters
+head(bgc_anid)
+head(bgc_afum)
+colnames(bgc_anid)[2] <- "Gene"
+colnames(bgc_afum)[2] <- "Gene"
+
+# add localization prediction
+bgc_anid_pred <- merge(bgc_anid, merged_anid, by="Gene", keep.x=TRUE, keep.y=FALSE)
+# separate known from in silico
+bgc_anid_pred_k <- subset(bgc_anid_pred,Source=="manual_annot_from_lit")
+bgc_anid_pred_s <- clusters_anti
+
+# subset merged_anid (deeploc results) to exclude genes present in bgc_anid
+merged_anid_other <- merged_anid[!merged_anid$Gene %in% bgc_anid_pred$Gene, ]
+
+# summary for PTS
+bgc_anid_sum <- as.data.frame(table(bgc_anid_pred$PTS))
+bgc_anid_sum$Perc <- (bgc_anid_sum$Freq / sum(bgc_anid_sum$Freq) ) * 100
+bgc_anid_sum$Group <- "SM_BGCs"
+colnames(bgc_anid_sum)[1] <- "PTS"
+
+# calculate fraction
+
+other_anid_sum <- as.data.frame(table(merged_anid_other$PTS))
+other_anid_sum$Perc <- (other_anid_sum$Freq / sum(other_anid_sum$Freq) ) * 100
+other_anid_sum$Group <- "Other"
+colnames(other_anid_sum)[1] <- "PTS"
+
+# primary metabolism for anid
+pri_met_anid <- read.csv("GenomeFiles/Gene_functions_primary_met.csv")
+# remove the peroxidase things
+pri_met_anid <- subset(pri_met_anid, Function != "Antioxidant enzymes")
+
+pri_met_anid2 <- merged_anid_other[merged_anid_other$Gene %in% pri_met_anid$Gene, ]
+
+# subset other for non-primary metabolism
+merged_anid_other2 <- merged_anid_other[!merged_anid_other$Gene %in% pri_met_anid$Gene, ]
+
+# sum up number genes to make sure it matches
+sum_genes <- nrow(merged_anid_other2) + nrow(pri_met_anid2) + nrow(bgc_anid_pred)
+
+# merge together
+anid_sum <- rbind(bgc_anid_sum,other_anid_sum)
+
+# now also add primary metabolism and non-metabolism genes
+pri_anid_sum <- as.data.frame(table(pri_met_anid2$PTS))
+pri_anid_sum$Perc <- (pri_anid_sum$Freq / sum(pri_anid_sum$Freq) ) * 100
+pri_anid_sum$Group <- "PM_GOterms"
+colnames(pri_anid_sum)[1] <- "PTS"
+
+other_anid_sum2 <- as.data.frame(table(merged_anid_other2$PTS))
+other_anid_sum2$Perc <- (other_anid_sum2$Freq / sum(other_anid_sum2$Freq) ) * 100
+other_anid_sum2$Group <- "Other_noPMSM"
+colnames(other_anid_sum2)[1] <- "PTS"
+
+# merge together
+anid_sum <- rbind(bgc_anid_sum,other_anid_sum)
+anid_sum <- rbind(anid_sum,pri_anid_sum)
+anid_sum <- rbind(anid_sum,other_anid_sum2)
+
+
+# plot pie charts
+ggplot(anid_sum, aes(x="", y=Perc, fill=PTS)) +
+  geom_bar(stat="identity", width=1) +
+  coord_polar("y", start=0) +
+  facet_wrap(~Group)
+
+# also sum up # PTS by cluster
+allclusters_anid <- unique(bgc_anid_pred[,c("Cluster.name")])
+
+
+# add backbone names from antismash clusters
+bb_anid <- read.delim("Nidulans_anti/BackboneEnzymes_anid.tsv",sep="\t")
+bb_anid$Backbone.enzymes <- gsub("\\[|\\]|'", "", bb_anid$Backbone.enzymes)
+bb_anid$Cluster.Type <- gsub("\\[|\\]|'", "", bb_anid$Cluster.Type)
+# add a "none" 
+bb_anid[nrow(bb_anid)+1,"BGC"] <- "none"
+
+#allclusters_anid2 <- merge(allclusters_anid, bb_anid, by="BGC", keep.x=TRUE, keep.y=FALSE)
+
+# sum up PTS by cluster now - for now use column BGC
+bgc_summary <- bgc_anid_pred %>%
+  group_by(Cluster.name) %>%
+  summarise(total_entries = n())
+
+# Summarize how many of those entries have PTS
+pts_summary <- bgc_anid_pred %>%
+  filter(PTS == "PTS") %>%
+  group_by(Cluster.name) %>%
+  summarise(pts_entries = n())
+
+# Merge the two summaries based on BGC
+summary_combined <- merge(bgc_summary, pts_summary, by = "Cluster.name", all.x = TRUE)
+
+# Replace NA values with 0 for BGCs with no PTS entries
+summary_combined[is.na(summary_combined)] <- 0
+
+write.csv(bgc_anid_pred,"Output/bgc_anid_pred.csv",row.names = FALSE)
+write.csv(bb_anid,"Output/bb_anid.csv",row.names=FALSE)
+
+bb_afum <- read.delim("Fumi_anti/BackboneEnzymes_afum.tsv",sep="\t")
+bb_afum$Backbone.enzymes <- gsub("\\[|\\]|'", "", bb_afum$Backbone.enzymes)
+bb_afum$Cluster.Type <- gsub("\\[|\\]|'", "", bb_afum$Cluster.Type)
+
+bb_aalt <- read.delim("Alternata_anti/BackboneEnzymes_aalt.tsv",sep="\t")
+bb_aalt$Backbone.enzymes <- gsub("\\[|\\]|'", "", bb_aalt$Backbone.enzymes)
+bb_aalt$Cluster.Type <- gsub("\\[|\\]|'", "", bb_aalt$Cluster.Type)
+
+
+# 
+# 
+# # plot perox score
+# means <- anti_anid_pred %>%
+#   group_by(PTS) %>%
+#   summarise(mean_Peroxisome = mean(Peroxisome),
+#             sd_Peroxisome = sd(Peroxisome))
+# 
+# # Conduct t-test
+# t_test_result <- t.test(Peroxisome ~ PTS, data = anti_anid_pred)
+# 
+# # Plot with error bars
+# ggplot(anti_anid_pred, aes(x = PTS, y = Peroxisome)) +
+#   geom_violin() +
+#   stat_summary(fun = "mean",
+#                geom = "point",
+#                color = "black") +
+#   geom_text(x = 1, y = max(anti_anid_pred$Peroxisome), 
+#             label = paste("p-value: ", signif(t_test_result$p.value, digits = 2)), 
+#             hjust = 0, size = 4) +
+#   labs(x = "PTS", y = "Peroxisome", title = "Anid Peroxisome scores") +
+#   theme_bw()
+
+
+```
+
+Did some manual annotation/mapping in excel. NOW reimport the Secmet gene lists and add deeploc annotations
+
+```{r final_BGC_compilation}
+anti_anid <- read.delim("Nidulans_anti/SummaryTable_anid.tsv",sep="\t")
+anti_aalt <- read.delim("Alternata_anti/SummaryTable_aalt.tsv",sep="\t")
+anti_afum <- read.delim("Fumi_anti/SummaryTable_afum.tsv",sep="\t")
+
+# remove the brackets and '
+anti_anid$Gene <- gsub("\\[|\\]|'", "", anti_anid$Gene)
+anti_anid <- separate_rows(anti_anid, Gene, sep = ", ")
+anti_anid$Reference <- "AntiSmash"
+
+# repeat for afum
+anti_afum$Gene <- gsub("\\[|\\]|'", "", anti_afum$Gene)
+anti_afum <- separate_rows(anti_afum, Gene, sep = ", ")
+anti_afum$Reference <- "AntiSmash"
+
+
+# repeat for aalt
+anti_aalt$Gene <- gsub("\\[|\\]|'", "", anti_aalt$Gene)
+anti_aalt <- separate_rows(anti_aalt, Gene, sep = ", ")
+# anti_aalt$Reference <- "AntiSmash"
+
+# Merge onto known lists
+library(readxl)
+known_anid <- read_excel("GenomeFiles/deeploc_known_clusters_anid_afum.xlsx", sheet = "known_anid")
+# fill in empty refs (fix later)
+known_anid$Reference <- ifelse(is.na(known_anid$Reference), "missingpaper", known_anid$Reference)
+
+# repeat for afum
+known_afum <- read_excel("GenomeFiles/deeploc_known_clusters_anid_afum.xlsx", sheet = "known_afum")
+known_afum$Reference <- "missingpaper"
+
+# remove duplicates from antismash
+anti_anid <- anti_anid[!anti_anid$Gene %in% known_anid$Gene, ]
+anti_afum <- anti_afum[!anti_afum$Gene %in% known_afum$Gene, ]
+
+# merge known and in silico gene lists together
+all_bgc_anid <- rbind(anti_anid[,c("ClusterName","Gene","Reference")],
+                      known_anid[,c("ClusterName","Gene","Reference")])
+
+all_bgc_afum <- rbind(anti_afum[,c("ClusterName","Gene","Reference")],
+                      known_afum[,c("ClusterName","Gene","Reference")])
+
+# add deeploc predictions
+bgc_anid_pred <- merge(all_bgc_anid, merged_anid, by="Gene", keep.x=TRUE, keep.y=FALSE)
+# note that 3 genes were removed in this step??? possible duplicates
+
+bgc_afum_pred <- merge(all_bgc_afum, merged_afum, by="Gene", keep.x=TRUE, keep.y=FALSE)
+bgc_aalt_pred <- merge(anti_aalt, merged_aalt, by="Gene", keep.x=TRUE, keep.y=FALSE)
+
+
+
+#### CONTINUE FROM HERE
+
+# subset merged_anid (deeploc results) to exclude genes present in bgc_anid
+merged_anid_other <- merged_anid[!merged_anid$Gene %in% bgc_anid_pred$Gene, ]
+
+# summary for PTS
+bgc_anid_pred$merge <- paste0(bgc_anid_pred$PTS,bgc_anid_pred$conf)
+bgc_anid_sum <- as.data.frame(table(bgc_anid_pred$merge))
+bgc_anid_sum$Perc <- (bgc_anid_sum$Freq / sum(bgc_anid_sum$Freq) ) * 100
+bgc_anid_sum$Group <- "SM_BGCs"
+colnames(bgc_anid_sum)[1] <- "PTS"
+
+# calculate fraction
+merged_anid_other$merge <- paste0(merged_anid_other$PTS,merged_anid_other$conf)
+other_anid_sum <- as.data.frame(table(merged_anid_other$merge))
+other_anid_sum$Perc <- (other_anid_sum$Freq / sum(other_anid_sum$Freq) ) * 100
+other_anid_sum$Group <- "Other"
+colnames(other_anid_sum)[1] <- "PTS"
+
+# primary metabolism for anid
+pri_met_anid <- read.csv("GenomeFiles/Gene_functions_primary_met.csv")
+# remove the peroxidase things
+pri_met_anid <- subset(pri_met_anid, Function != "Antioxidant enzymes")
+
+pri_met_anid2 <- merged_anid_other[merged_anid_other$Gene %in% pri_met_anid$Gene, ]
+
+# subset other for non-primary metabolism
+merged_anid_other2 <- merged_anid_other[!merged_anid_other$Gene %in% pri_met_anid$Gene, ]
+
+# sum up number genes to make sure it matches
+sum_genes <- nrow(merged_anid_other2) + nrow(pri_met_anid2) + nrow(bgc_anid_pred)
+
+# merge together
+anid_sum <- rbind(bgc_anid_sum,other_anid_sum)
+
+# now also add primary metabolism and non-metabolism genes
+pri_anid_sum <- as.data.frame(table(pri_met_anid2$merge))
+pri_anid_sum$Perc <- (pri_anid_sum$Freq / sum(pri_anid_sum$Freq) ) * 100
+pri_anid_sum$Group <- "PM_GOterms"
+colnames(pri_anid_sum)[1] <- "PTS"
+
+other_anid_sum2 <- as.data.frame(table(merged_anid_other2$merge))
+other_anid_sum2$Perc <- (other_anid_sum2$Freq / sum(other_anid_sum2$Freq) ) * 100
+other_anid_sum2$Group <- "Other_noPMSM"
+colnames(other_anid_sum2)[1] <- "PTS"
+
+# merge together
+anid_sum <- rbind(bgc_anid_sum,other_anid_sum)
+anid_sum <- rbind(anid_sum,pri_anid_sum)
+anid_sum <- rbind(anid_sum,other_anid_sum2)
+
+# now do for afum
+# subset merged_afum (deeploc results) to exclude genes present in bgc_afum
+merged_afum_other <- merged_afum[!merged_afum$Gene %in% bgc_afum_pred$Gene, ]
+
+# summary for PTS
+bgc_afum_pred$merge <- paste0(bgc_afum_pred$PTS,bgc_afum_pred$conf)
+bgc_afum_sum <- as.data.frame(table(bgc_afum_pred$merge))
+bgc_afum_sum$Perc <- (bgc_afum_sum$Freq / sum(bgc_afum_sum$Freq) ) * 100
+bgc_afum_sum$Group <- "SM_BGCs"
+colnames(bgc_afum_sum)[1] <- "PTS"
+
+# calculate fraction
+merged_afum_other$merge <- paste0(merged_afum_other$PTS,merged_afum_other$conf)
+other_afum_sum <- as.data.frame(table(merged_afum_other$merge))
+other_afum_sum$Perc <- (other_afum_sum$Freq / sum(other_afum_sum$Freq) ) * 100
+other_afum_sum$Group <- "Other"
+colnames(other_afum_sum)[1] <- "PTS"
+afum_sum <- rbind(bgc_afum_sum,other_afum_sum)
+
+
+# repeat for aalt
+# subset merged_aalt (deeploc results) to exclude genes present in bgc_aalt
+merged_aalt_other <- merged_aalt[!merged_aalt$Gene %in% bgc_aalt_pred$Gene, ]
+
+# summary for PTS
+bgc_aalt_pred$merge <- paste0(bgc_aalt_pred$PTS,bgc_aalt_pred$conf)
+bgc_aalt_sum <- as.data.frame(table(bgc_aalt_pred$merge))
+bgc_aalt_sum$Perc <- (bgc_aalt_sum$Freq / sum(bgc_aalt_sum$Freq) ) * 100
+bgc_aalt_sum$Group <- "SM_BGCs"
+colnames(bgc_aalt_sum)[1] <- "PTS"
+
+# calculate fraction
+merged_aalt_other$merge <- paste0(merged_aalt_other$PTS,merged_aalt_other$conf)
+other_aalt_sum <- as.data.frame(table(merged_aalt_other$merge))
+other_aalt_sum$Perc <- (other_aalt_sum$Freq / sum(other_aalt_sum$Freq) ) * 100
+other_aalt_sum$Group <- "Other"
+colnames(other_aalt_sum)[1] <- "PTS"
+aalt_sum <- rbind(bgc_aalt_sum,other_aalt_sum)
+
+#write to file
+write.csv(anid_sum,"Output/anid_sum.csv")
+write.csv(afum_sum,"Output/afum_sum.csv")
+write.csv(aalt_sum,"Output/aalt_sum.csv")
+
+
+# find summary by cluster
+# need to count number of genes per cluster and then number with PTS
+cluster_sum_anid <- bgc_anid_pred %>%
+  count(ClusterName)
+# also summarize for PTS
+cluster_sum_anid_PTS <- bgc_anid_pred %>%
+  subset(PTS == "PTS") %>%
+  count(ClusterName)
+# count high confidence PTS
+cluster_sum_anid_PTS2 <- bgc_anid_pred %>%
+  subset(PTS == "PTS") %>%
+  subset(Peroxisome > 0.5) %>%
+  count(ClusterName)
+
+# merge together
+cluster_sum_anid2 <- merge(cluster_sum_anid, cluster_sum_anid_PTS, all = TRUE, by="ClusterName")
+cluster_sum_anid2 <- merge(cluster_sum_anid2, cluster_sum_anid_PTS2, all = TRUE, by="ClusterName")
+
+colnames(cluster_sum_anid2) <- c("ClusterName",
+                                 "nGenes",
+                                 "nPTS",
+                                 "nPTS>0.5")
+
+# make NA values 0
+cluster_sum_anid2$nPTS[is.na(cluster_sum_anid2$nPTS)] <- 0
+
+
+# summarize nclusters with at least one PTS
+nbgc_anid <- cluster_sum_anid2 %>%
+  count(`nPTS>0.5` >= 1)
+  #count(nPTS >= 1)
+# repeat for afum
+cluster_sum_afum <- bgc_afum_pred %>%
+  count(ClusterName)
+# also summarize for PTS
+cluster_sum_afum_PTS <- bgc_afum_pred %>%
+  subset(PTS == "PTS") %>%
+  count(ClusterName)
+# count high confidence PTS
+cluster_sum_afum_PTS2 <- bgc_afum_pred %>%
+  subset(PTS == "PTS") %>%
+  subset(Peroxisome > 0.5) %>%
+  count(ClusterName)
+
+# merge together
+cluster_sum_afum2 <- merge(cluster_sum_afum, cluster_sum_afum_PTS, all = TRUE, by="ClusterName")
+cluster_sum_afum2 <- merge(cluster_sum_afum2, cluster_sum_afum_PTS2, all = TRUE, by="ClusterName")
+
+colnames(cluster_sum_afum2) <- c("ClusterName",
+                                 "nGenes",
+                                 "nPTS",
+                                 "nPTS>0.5")
+
+# make NA values 0
+cluster_sum_afum2$nPTS[is.na(cluster_sum_afum2$nPTS)] <- 0
+
+
+# summarize nclusters with at least one PTS
+nbgc_afum <- cluster_sum_afum2 %>%
+  count(`nPTS>0.5` >= 1)
+  #count(nPTS >= 1)
+# repeat for aalt
+cluster_sum_aalt <- bgc_aalt_pred %>%
+  count(ClusterName)
+# also summarize for PTS
+cluster_sum_aalt_PTS <- bgc_aalt_pred %>%
+  subset(PTS == "PTS") %>%
+  count(ClusterName)
+# count high confidence PTS
+cluster_sum_aalt_PTS2 <- bgc_aalt_pred %>%
+  subset(PTS == "PTS") %>%
+  subset(Peroxisome > 0.5) %>%
+  count(ClusterName)
+
+# merge together
+cluster_sum_aalt2 <- merge(cluster_sum_aalt, cluster_sum_aalt_PTS, all = TRUE, by="ClusterName")
+cluster_sum_aalt2 <- merge(cluster_sum_aalt2, cluster_sum_aalt_PTS2, all = TRUE, by="ClusterName")
+
+colnames(cluster_sum_aalt2) <- c("ClusterName",
+                                 "nGenes",
+                                 "nPTS",
+                                 "nPTS>0.5")
+
+# make NA values 0
+cluster_sum_aalt2$nPTS[is.na(cluster_sum_aalt2$nPTS)] <- 0
+
+
+# summarize nclusters with at least one PTS
+nbgc_aalt <- cluster_sum_aalt2 %>%
+  count(`nPTS>0.5` >= 1)
+  #count(nPTS >= 1)
+
+# FINALLY - summarize number of genes with the motifs
+signals_anid_sum <- as.data.frame(table(bgc_anid_pred$Signals))
+signals_afum_sum <- as.data.frame(table(bgc_afum_pred$Signals))
+signals_aalt_sum <- as.data.frame(table(bgc_aalt_pred$Signals))
+
+# output
+write.csv(signals_anid_sum, 'Output/anid_signals_deeploc2.csv', row.names=FALSE)
+write.csv(signals_afum_sum, 'Output/afum_signals_deeploc2.csv', row.names=FALSE)
+write.csv(signals_aalt_sum, 'Output/aalt_signals_deeploc2.csv', row.names=FALSE)
+
+# output BGC predictions
+write.csv(bgc_anid_pred, 'Output/anid_compiled_deeploc2.csv', row.names=FALSE)
+write.csv(bgc_afum_pred, 'Output/afum_compiled_deeploc2.csv', row.names=FALSE)
+write.csv(bgc_aalt_pred, 'Output/aalt_compiled_deeploc2.csv', row.names=FALSE)
+
+
+```
+
+
+
+# Generate summary graphs
+
+```{r import_categories}
+library(ggplot2)
+
+anid_sum_loc <- as.data.frame(table(anid$Localizations))
+anid_sum_sig <- as.data.frame(table(anid$Signals))
+
+# sort these
+anid_sum_loc <- anid_sum_loc[order(anid_sum_loc$Freq, decreasing = TRUE), ]
+anid_sum_sig <- anid_sum_sig[order(anid_sum_sig$Freq, decreasing = TRUE), ]
+
+library(knitr)
+
+# print tables
+kable(anid_sum_loc)
+kable(anid_sum_sig)
+
+# add a column indicating Peroxisomal targeting seq is present
+anid$PTS <- ifelse(grepl("Perox", anid$Signals), "PTS", "none")
+
+# plot Peroxisome value for anid
+# Calculate means and standard deviations for each group
+means <- anid %>%
+  group_by(PTS) %>%
+  summarise(mean_Peroxisome = mean(Peroxisome),
+            sd_Peroxisome = sd(Peroxisome))
+
+# Conduct t-test
+t_test_result <- t.test(Peroxisome ~ PTS, data = anid)
+
+# Plot with error bars
+ggplot(anid, aes(x = PTS, y = Peroxisome)) +
+  geom_violin() +
+  stat_summary(fun = "mean",
+               geom = "point",
+               color = "black") +
+  geom_text(x = 1, y = max(anid$Peroxisome), 
+            label = paste("p-value: ", signif(t_test_result$p.value, digits = 2)), 
+            hjust = 0, size = 4) +
+  labs(x = "PTS", y = "Peroxisome", title = "Anid Peroxisome scores") +
+  theme_bw()
+
+
+# repeat for afum
+
+afum_sum_loc <- as.data.frame(table(afum$Localizations))
+afum_sum_sig <- as.data.frame(table(afum$Signals))
+
+afum_sum_loc <- afum_sum_loc[order(afum_sum_loc$Freq, decreasing = TRUE), ]
+afum_sum_sig <- afum_sum_sig[order(afum_sum_sig$Freq, decreasing = TRUE), ]
+
+# print tables
+kable(afum_sum_loc)
+kable(afum_sum_sig)
+
+
+# add a column indicating Peroxisomal targeting seq is present
+afum$PTS <- ifelse(grepl("Perox", afum$Signals), "PTS", "none")
+
+# plot Peroxisome value for afum
+# Calculate means and standard deviations for each group
+means <- afum %>%
+  group_by(PTS) %>%
+  summarise(mean_Peroxisome = mean(Peroxisome),
+            sd_Peroxisome = sd(Peroxisome))
+
+# Conduct t-test
+t_test_result <- t.test(Peroxisome ~ PTS, data = afum)
+
+# Plot with error bars
+ggplot(afum, aes(x = PTS, y = Peroxisome)) +
+  geom_violin() +
+  stat_summary(fun = "mean",
+               geom = "point",
+               color = "black") +
+  geom_text(x = 1, y = max(afum$Peroxisome), 
+            label = paste("p-value: ", signif(t_test_result$p.value, digits = 2)), 
+            hjust = 0, size = 4) +
+  labs(x = "PTS", y = "Peroxisome", title = "Afum Peroxisome scores") +
+  theme_bw()
+
+
+# repeat for aalt
+aalt_sum_loc <- as.data.frame(table(aalt$Localizations))
+aalt_sum_sig <- as.data.frame(table(aalt$Signals))
+
+aalt_sum_loc <- aalt_sum_loc[order(aalt_sum_loc$Freq, decreasing = TRUE), ]
+aalt_sum_sig <- aalt_sum_sig[order(aalt_sum_sig$Freq, decreasing = TRUE), ]
+
+# print tables
+kable(aalt_sum_loc)
+kable(aalt_sum_sig)
+
+# add a column indicating Peroxisomal targeting seq is present
+aalt$PTS <- ifelse(grepl("Perox", aalt$Signals), "PTS", "none")
+
+# plot Peroxisome value for aalt
+# Calculate means and standard deviations for each group
+means <- aalt %>%
+  group_by(PTS) %>%
+  summarise(mean_Peroxisome = mean(Peroxisome),
+            sd_Peroxisome = sd(Peroxisome))
+
+# Conduct t-test
+t_test_result <- t.test(Peroxisome ~ PTS, data = aalt)
+
+# Plot with error bars
+ggplot(aalt, aes(x = PTS, y = Peroxisome)) +
+  geom_violin() +
+  stat_summary(fun = "mean",
+               geom = "point",
+               color = "black") +
+  geom_text(x = 1, y = max(aalt$Peroxisome), 
+            label = paste("p-value: ", signif(t_test_result$p.value, digits = 2)), 
+            hjust = 0, size = 4) +
+  labs(x = "PTS", y = "Peroxisome", title = "Aalt Peroxisome scores") +
+  theme_bw()
+
+```
+
+
+```{r session_info}
+#library(devtools)
+#session_info()
+```
+

@@ -1,0 +1,376 @@
+---
+title: "TSA induction perox movements"
+author: "Livia Songster & Gaurav Kumar"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Import trackmate data
+
+```{r import}
+
+# compile trackmate output files
+#setwd("Z:/Garry/Imaging data/SecMet_project/Quantification/untitled folder/Trackmate_Results")
+setwd("C:/Users/Livia Songster/Documents/Garry_analysis/Trackmate_Results")
+# removes everything from your environment to start fresh
+rm(list=ls())
+
+# make an output folder to save files into
+# Define the file path to the plots directory
+plots_dir <- "../Plots_output_time2s_max2umdistance"
+
+# Create the plots folder if it doesn't exist
+if (!dir.exists(plots_dir)) {
+  dir.create(plots_dir)
+}
+
+
+
+# first begin by finding all the file names
+filenames <- list.files(pattern=".csv")
+# remove entries with lineresults.csv
+# Use grep to find indices of elements that do not contain "lineresults"
+indices_to_keep <- grep("lineresults", filenames, invert = TRUE)
+
+# Subset the list based on the indices
+filenames <- filenames[indices_to_keep]
+
+# Print the filtered list
+print(head(filenames))
+
+# make a summary table that will record the number of peroxisomes & cell length for each
+# everything with "" will be an empty column we populate later
+sumdata <- data.frame(filenames,"","","","","","","","","","","","","")
+# make column names specific
+colnames(sumdata) <- c("filename","length","n.perox.t0","total.tracks","n.moving.far","n.moving.fast","n.excluded","n.hitchhiking","avg.max.speed","avg.max.distance","perox.per.10um","hitchhiking.per.10um","perc.hitchhiking","perc.mobile")
+
+# remove filetype from filename list
+sumdata$filename <- substr(sumdata$filename,1,nchar(sumdata$filename)-4)
+
+```
+
+## Summarize trackmate data
+
+```{r summarize_function}
+# now - for first file, open the trackmate file and begin populating the sumdata frame
+# library(XML)
+summarize.trackmate <- function(filename,duration.threshold=2) {
+  temp <- read.csv(filename,header = T)
+  
+  # # read in xml file and check calibration that was used
+  # xmlname <- gsub('.csv','.xml',filename)
+  # tempxml <- xmlToDataFrame(xmlname)
+  # # pull out the geometry / calibration info by splitting string
+  # tempxml <- unlist(strsplit(tempxml[1,1],"\r\n"))[35:38]
+  # # get old pixel and frame interval
+  # oldpixel <- as.numeric(unlist(strsplit(tempxml[1],"dx = "))[2])
+  # oldframe <- as.numeric(unlist(strsplit(tempxml[4],"dt = "))[2])
+  
+  # remove 3 rows with repeating header info
+  temp <- temp[4:nrow(temp),]
+  # make all columns numeric
+  temp[,2:28] <- sapply(temp[,2:28],as.numeric)
+  
+  # # now recalibrate if needed
+  # # start with correcting pixels
+  # if (oldpixel != 0.11) {
+  #   convertcols <- c("TRACK_DISPLACEMENT","TRACK_X_LOCATION","TRACK_Y_LOCATION",
+  #                    "TRACK_Z_LOCATION","TRACK_MEAN_SPEED","TRACK_MIN_SPEED",
+  #                    "TRACK_MEDIAN_SPEED","TRACK_STD_SPEED","TOTAL_DISTANCE_TRAVELED",
+  #                    "MAX_DISTANCE_TRAVELED","MEAN_STRAIGHT_LINE_SPEED")
+  #   temp[,convertcols] <- (temp[,convertcols] / oldpixel) * 0.11
+  #   print("done converting pixel to micron")
+  # } 
+  # 
+  # # now fix timing
+  # if (oldframe != 0.5) {
+  #   convertcols <- c("TRACK_DURATION","TRACK_START","TRACK_STOP",
+  #                    "TRACK_MEAN_SPEED","TRACK_MIN_SPEED",
+  #                    "TRACK_MEDIAN_SPEED","TRACK_STD_SPEED",
+  #                    "MEAN_STRAIGHT_LINE_SPEED")
+  #   temp[,convertcols] <- (temp[,convertcols] / oldframe) * 0.5
+  #   print("done converting frames to time")
+  # } 
+  # 
+    
+  # count number of perox at t0
+  n.perox.t0 <- nrow(subset(temp, TRACK_START == 0))
+  
+  # record number tracks with duration shorter than threshold
+  n.excluded <- nrow(subset(temp, TRACK_DURATION < duration.threshold))
+  
+  # remove rows with duration shorter than threshold
+  temp <- subset(temp, TRACK_DURATION > duration.threshold)
+
+  # count total tracks that are longer than the threshold
+  total.tracks <- nrow(temp)
+  # count tracks moving more than 2um
+  n.moving.far <- nrow(subset(temp, MAX_DISTANCE_TRAVELED > 2))
+  # count tracks moving max of least 1um per second
+  n.moving.fast <- nrow(subset(temp, TRACK_MAX_SPEED > 1))
+  # count tracks that are far and fast
+  n.hitchhiking <- nrow(subset(temp, TRACK_MAX_SPEED > 1 & MAX_DISTANCE_TRAVELED > 2))
+  # mobile fraction
+  mobile_temp <- subset(temp, TRACK_MAX_SPEED > 1)
+  
+  avg.max.speed <- mean(mobile_temp$TRACK_MAX_SPEED)
+
+  avg.max.distance <- mean(mobile_temp$MAX_DISTANCE_TRAVELED)
+  # return the dataframe
+  # return(temp)
+  # return calculated values
+  output <- c(n.perox.t0,total.tracks,n.moving.far,n.moving.fast,n.excluded,n.hitchhiking,avg.max.speed,avg.max.distance)
+  names(output) <- c("n.perox.t0","total.tracks","n.moving.far","n.moving.fast","n.excluded","n.hitchhiking","avg.max.speed","avg.max.distance")
+  return(output)
+}
+
+```
+
+```{r run_summarize_trackmate}
+# now import that summary data into the dataframe
+# loop through every row and repeat
+for (i in 1:nrow(sumdata)) {
+  sumdata[i,3:10] <- summarize.trackmate(paste0(sumdata[i,1],".csv"))[1:8]
+}
+```
+
+## Import length data
+```{r lengths}
+
+# find files with length data
+# filenames.length <- list.files(path="../",recursive=TRUE,pattern="_gfp_linescan.txt")
+filenames.length <- list.files(pattern="lineresults.csv")
+
+# simplify filenames of length files
+simple <- substr(filenames,1,nchar(filenames)-4)
+# simple <- gsub('GFP-Linescan-Results/','C2-new-',simple)
+
+# Extract the common prefix of file names
+common_prefix <- substr(filenames.length, 1, nchar(filenames.length) - 16)
+
+# Create a vector of expected file names in filenames
+expected_filenames <- paste0(common_prefix, ".csv")
+
+# Find the missing file name
+missing_filename <- setdiff(expected_filenames, filenames)
+
+# Print the missing file name
+print(cat("Missing filename:", missing_filename, "\n"))
+
+
+# match length files to filenames
+filenames.merged <- data.frame(filenames.length,simple)
+colnames(filenames.merged) <- c("lengthfile","filename")
+
+# now merge the tables together
+total <- merge(sumdata, filenames.merged, by="filename",all.x=TRUE)
+
+# now write summary function for lengths
+summarize.length <- function(lengthfile,umperpixel=0.11) {
+  # temp <- read.table(paste0("../",lengthfile))
+  temp <- read.csv(lengthfile)
+  
+  # calculate length
+  # these samples are all in pixels, so multiply by 0.11 um
+  # to convert to microns
+  length.um <- max(temp$X) * umperpixel
+  # used 20 pixel line width - which is 2.2um wide
+  # so multiply to get um squared - area  
+  # area.umsq <- length.um * 2.2
+  # return calculated values
+  #output <- c(length.um, area.umsq)
+  output <- length.um
+  names(output) <- "length.um"
+  return(output)
+}
+
+# now import that length summary data into the dataframe
+# loop through every row and repeat
+for (i in 1:nrow(sumdata)) {
+  total[i,2] <- summarize.length(total[i,"lengthfile"],umperpixel=0.11)[1]
+}
+
+```
+
+## calculate final summary & export data
+```{r final_summary_export}
+
+# calculate final summary stats
+# total$perox.per.umsq <- as.numeric(total$n.perox.t0) / as.numeric(total$area.umsq)
+total$perox.per.10um <- as.numeric(total$n.perox.t0) / as.numeric(total$length) * 10
+
+total$hitchhiking.per.10um <- as.numeric(total$n.hitchhiking) / as.numeric(total$length) * 10
+#total$perc.moving.fast <- as.numeric(total$n.moving.fast) / as.numeric(total$total.tracks) * 100
+total$perc.hitchhiking <- as.numeric(total$n.hitchhiking) / as.numeric(total$total.tracks) * 100
+total$perc.mobile <- as.numeric(total$n.moving.fast) / as.numeric(total$total.tracks) * 100
+# add more columns with descriptions
+# cbind will bind columnbs together
+total2 <- cbind(total, do.call("rbind", strsplit(total$filename,"_")))
+
+
+# make sure everything else is numeric too
+total2[,2:14] <- sapply(total2[,2:14],as.numeric)
+
+# remove the dash in img column
+total2 <- cbind(total2[,c(1:17,19)], do.call("rbind", strsplit(total2$'5',"-")))
+
+# update column names for those new metadata columns
+colnames(total2)[16:20] <- c("expt","strain","sampleID","FoV","crop.no")
+# add treatment column
+# define treatments based on sampleID
+treatment <- data.frame(unique(total2$sampleID),"")
+colnames(treatment) <- c("sampleID","Treatment")
+treatment$Treatment <- c("1uM_TSA","EtOH_control","1uM_TSA","EtOH_control","1uM_TSA","EtOH_control")
+# now add that info to the total3 dataframe
+total3 <- merge(total2,treatment)
+
+### EXPORT DATA
+write.csv(total3,paste0(plots_dir,"/Summary_trackmate_data.csv"),row.names=FALSE)
+
+```
+
+## make graphs using ggplot
+```{r define_colors_and_factor_order}
+
+# read in fixed trackmate file (if you edited it in excel after exporting)
+# total3 <- read.csv("../Summary_trackmate_data.csv")
+
+# set factor order
+# Define the custom order of levels
+custom_order <- c("EtOH_control", "1uM_TSA")
+
+# Apply the custom order to the "treatment" column
+total3$Treatment <- factor(total3$Treatment, levels = custom_order)
+
+library(ggplot2)
+library(ggpubr)
+
+# define colors for each sampleID
+my_colors <- c("Z11" = "orchid", "Z12" = "orchid", "Z3" = "slateblue", "Z4" = "slateblue", "Z7" = "indianred2", "Z8" = "indianred2")
+
+# make a function to make pretty plots that are consistent
+create_custom_ggplot <- function(xdata = "Treatment", ydata = "perc.hitchhiking",ylab = "Percent hitchhiking") {
+  # Filter the data to include only rows where ydata is finite and not missing
+  filtered_data <- total3[is.finite(total3[[ydata]]), ]
+  
+  # Perform t-test and obtain p-value
+  ttest_result <- t.test(total3[[ydata]] ~ total3[[xdata]])
+
+  # Create the ggplot with custom colors and shapes
+  ggplot(data = total3, aes_string(x = xdata, y = ydata)) +
+    geom_point(aes(colour = sampleID, shape = .data[[xdata]]),
+               size = 3, position = position_jitter(w = 0.3, h = 0)) +
+    # add mean line
+    stat_summary(fun.y = mean, fun.ymin = mean, fun.ymax = mean, geom = "crossbar", width = 0.5, size = 1, color = "black") +
+    # add error bars
+    stat_summary(fun.data = mean_se, fun.args = list(mult = 1), geom = "errorbar", width = 0.2, size = 1, color = "black") +
+    # adjust theme and add y label
+    theme_bw() +
+    theme(legend.position = "none",
+          text = element_text(size = 16),
+          axis.text.x = element_text(angle = 45, hjust = 1, size = 14)) +
+    ylab(ylab) +
+    # Define specific colors for sampleID values
+    scale_color_manual(values = my_colors) +
+    # Define specific shapes for "control" and "TSA"
+    scale_shape_manual(values = c("EtOH_control" = 15, "1uM_TSA" = 19)) +
+    # Add p-value to the plot
+    geom_text(aes(x = "1uM_TSA", y = max(filtered_data[[ydata]]), label = paste("p =", round(ttest_result$p.value, 4))), vjust = 2, size = 5, color = "black")
+}
+
+```
+
+```{r percent_hitchhiking_far_and_fast_thresholds}
+create_custom_ggplot(ydata = "perc.hitchhiking",ylab = "Percent hitchhiking")
+
+# save the graph
+ggsave(paste0(plots_dir,"/perc-hitchhiking.png"),width=3,height=6,dpi=300)
+
+```
+
+
+```{r perc_mobile_graph}
+
+create_custom_ggplot(ydata = "perc.mobile",ylab = "Percent mobile (max speed > 1 um/s)")
+ggsave(paste0(plots_dir,"/perc-mobile.png"),width=3,height=6,dpi=300)
+
+```
+
+```{r perox_density_graph}
+create_custom_ggplot(ydata = "perox.per.10um",ylab = "Number perox per 10 um")
+
+ggsave(paste0(plots_dir,"/perox-density.png"),width=3,height=6,dpi=300)
+
+
+```
+
+```{r avg_max_speed_graph}
+create_custom_ggplot(ydata = "avg.max.speed",ylab = "Average max speed (um/s)")
+
+ggsave(paste0(plots_dir,"/max-speed.png"),width=3,height=6,dpi=300)
+
+
+```
+
+
+```{r avg_max_distance_graph}
+create_custom_ggplot(ydata = "avg.max.distance",ylab = "Average max distance (um)")
+
+ggsave(paste0(plots_dir,"/max-distance.png"),width=3,height=6,dpi=300)
+
+
+```
+
+
+```{r correlation_peroxdensity_percmobile_graph}
+ggplot(data=total3,aes(x=perox.per.10um,y=perc.mobile)) +
+  geom_point(aes(colour = Treatment)) +
+  #stat_ellipse() +
+  theme_bw()
+
+# use built in stat summary function "aggregate"
+aggregate(perc.hitchhiking ~ Treatment, total3, mean)
+aggregate(perox.per.10um ~ Treatment, total3, mean)
+
+```
+```{r perc_immobile_graph}
+# # plot percent zeros for both conditions
+# perc_zero <- data.frame(unique(total3$sampleID),unique(total3$Treatment),"")
+# # fix column names
+# colnames(perc_zero) <- c("sampleID","Treatment","Percent_zero_hitchhiking")
+# # populate final column
+# for (i in 1:nrow(perc_zero)) {
+#   temp <- subset(total3,sampleID == perc_zero[i,1])
+#   # calculate percent zeros
+#   # total number of entries
+#   total_cells <- nrow(temp)
+#   # total number of zeros
+#   total_zeros <- nrow(subset(temp,perc.hitchhiking == "0"))
+#   # calculate percent zeros
+#   perc_zero[i,3] <- total_zeros / total_cells * 100
+# }
+# 
+# # make it numeric
+# perc_zero$Percent_zero_hitchhiking <- as.numeric(perc_zero$Percent_zero_hitchhiking)
+# 
+# # plot it
+# ggplot(data=perc_zero,aes(x=Treatment,y=Percent_zero_hitchhiking)) +
+#   geom_point(width = 0.2, aes(colour = Treatment), size = 3,position = position_jitter(w = 0.3, h = 0)) +
+#   # add mean line
+#   stat_summary(fun.y= mean, fun.ymin=mean, fun.ymax=mean, geom="crossbar", width=0.5, size=1,color="black") +
+#   # add error bars
+#   stat_summary(fun.data=mean_se, fun.args = list(mult=1), geom="errorbar", width=0.2, size=1,color="black") +
+#   theme_bw()  +
+#   theme(legend.position = "none",
+#         text = element_text(size = 16),
+#         axis.text.x = element_text(angle = 45, hjust = 1, size = 14)) +
+#   ylab("Percentage cells with immobile perox") #+
+#   #facet_wrap(~ genotype, ncol = 2)  # Facet wrap based on the "strain" variable
+# 
+# ggsave(paste0(plots_dir,"/perox-immobile.png"),width=3,height=6,dpi=300)
+
+```

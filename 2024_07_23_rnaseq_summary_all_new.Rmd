@@ -1,0 +1,1097 @@
+---
+title: "RNASeq_deseq2"
+author: "Livia Songster"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## 1. Data processing on TSCC
+See RNAseq protocol document for notes.
+
+## 2. Importing packages
+Install some packages that will be useful...
+
+Example code for installing packages:
+
+install.packages("BiocManager")
+
+BiocManager::install("genbankr")
+
+```{r packages, message=FALSE,results='hide'}
+library(BiocManager)
+library(DESeq2)
+library(tximport)
+library(EnhancedVolcano)
+library(GenomicFeatures)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(doBy)
+library(plotrix)
+library(scales)
+library(vsn)
+library("pheatmap")
+library("RColorBrewer")
+library(rmarkdown)
+library(factoextra)
+library(apeglm)
+library(reshape2)
+library(ggtext)
+library(ggdendro)
+
+```
+
+## 3. Import transcript-level estimates
+Next is following along a [tutorial](https://bioconductor.org/packages/devel/bioc/vignettes/tximport/inst/doc/tximport.html) to import data
+
+```{r import_transcript_data}
+dir <- getwd()
+dir
+# make output directories
+subDir <- paste0(dir,"/Output_2024-07-23_all")
+dir.create(path=subDir, showWarnings = FALSE)
+dir.create(paste0(subDir,"/Volcano_plots"), showWarnings = FALSE)
+dir.create(paste0(subDir,"/SigGenesOfInterest"), showWarnings = FALSE)
+dir.create(paste0(subDir,"/Cluster_heatmaps"), showWarnings = FALSE)
+dir.create(paste0(subDir,"/Cluster_normcounts"), showWarnings = FALSE)
+dir.create(paste0(subDir,"/NormCount-Graphs"), showWarnings = FALSE)
+dir.create(paste0(subDir,"/NormCount-Graphs/Data"), showWarnings = FALSE)
+
+# read in metadata with filenames
+metadata <- read.csv("metadata.csv",header=TRUE, sep= ",")
+
+# metadata <- metadata[10:39,]
+# set factor level; this is important for comparisons later
+# group levels that are listed earlier in the list
+# will be prioritized as the denominator when you do DESEq2 comparisons
+metadata$Group <- factor(metadata$Group, levels = c("veA_wildtype_ctrl",
+                                                    "veA_entry_ctrl",
+                                                    "veA_pxdAnull_ctrl",
+                                                    "veA_hookAnull_ctrl",
+                                                    "veA_entrybrown_ctrl",
+                                                    
+                                                    "veA1_wildtype_ctrl",
+                                                    "veA1_pxdAnull_ctrl",
+                                                    "veA1_hookAnull_ctrl",
+                                                    
+                                                    "veA_wildtype_TSA",
+                                                    "veA_entry_TSA",
+                                                    "veA_pxdAnull_TSA",
+                                                    "veA_hookAnull_TSA",
+                                                    "veA_entrybrown_TSA",
+                                                    
+                                                    "veA1_wildtype_TSA",
+                                                    "veA1_pxdAnull_TSA",
+                                                    "veA1_hookAnull_TSA"))
+paged_table(metadata)
+
+
+# add salmon filenames
+metadata$Salmon_File <- paste0("G:/Secmet_TSA_induction_round2/tscc_analysis_v2/salmon_quants/",
+                               metadata$Sample_ID,"_quant/quant.sf")
+
+# make sure all files are present
+all(file.exists(metadata$Salmon_File))
+
+# import data - first get file names
+files <- metadata$Salmon_File
+
+# associate those with sample ID
+names(files) <- paste(metadata$Sample_ID)
+
+# # generate transcript to gene annotation file for A. nidulans
+# txannotation <- makeTxDbFromGFF("Anidulans_genome_files/FungiDB-65_AnidulansFGSCA4.gff",
+#   format="auto",
+#   dataSource="FungiDB-65",
+#   organism="Aspergillus nidulans")
+# 
+# k <- keys(txannotation, keytype = "TXNAME")
+# tx2gene <- AnnotationDbi::select(txannotation, k, "GENEID", "TXNAME")
+# write.csv(tx2gene,"Anidulans_genome_files/salmon_tx2gene.csv",row.names = FALSE)
+
+
+# import transcript to gene conversion
+tx2gene <- read.csv("Anidulans_genome_files/salmon_tx2gene.csv")
+
+
+txi <- tximport(files, type = "salmon", tx2gene = tx2gene)
+tail(txi$counts)
+
+```
+
+## 4. DESeq2
+
+```{r run_deseq2}
+citation("DESeq2")
+
+# run analysis - tilde indicates sample groups with replicates
+dds <- DESeqDataSetFromTximport(txi, metadata, ~Group)
+
+# remove low-count genes that have a mean count below 5
+# keep <- rowSums(counts(dds)) >= 10
+keep <- rowMeans(counts(dds)) >= 5
+
+# find percentage of genes that have been kept after applying filter for low counts
+sum(keep) / length(dds) * 100
+
+# now subset your dds object to keep only "keep" rows
+dds <- dds[keep,]
+
+# run deseq command
+dds = DESeq(dds)
+
+
+
+# save the results of deseq
+# think about turning off cooksCutoff which removes p values when there is an outlier
+# since we will be validating things later anyways
+# keep independent filtering false because we subset our data above based on mean count of 5
+res = results(dds, alpha=0.1, independentFiltering=FALSE, cooksCutoff=TRUE)
+summary(res)
+
+
+# list the comparisons from the results table
+resultsNames(dds)
+
+```
+
+## 5. Volcano plot function
+
+```{r volcano_function}
+# summarize results from dds
+# group1 will be the numerator (ie, treatment)
+# group2 will be denominator (ie, control)
+make_volcano <- function(group1,group2) {
+  # group1 = "veA_wildtype_TSA"
+  # group2 = "veA_wildtype_ctrl"
+  print(paste0(group1," vs ",group2))
+  
+  res <- results(dds, contrast=c("Group", group1, group2), alpha=0.05, independentFiltering=FALSE, cooksCutoff=TRUE)
+  
+  # now save deseq results as a dataframe
+  deseqoutput <- as.data.frame(res)
+  
+  # plot it
+  EnhancedVolcano(deseqoutput,
+                  lab = row.names(deseqoutput),
+                  title = paste0(group1," vs. ",group2),
+                  subtitle = bquote(
+                    italic("")),
+                  caption = "",
+                  x = 'log2FoldChange',
+                  y = 'padj',
+                  pCutoff = 0.05,
+                  FCcutoff = 1,
+                  ylab = bquote(~-Log[10] ~ italic("Adj. P value")),
+                  #legendPosition = 'right',
+                  typeConnectors ="closed",
+                  drawConnectors = TRUE,
+                  widthConnectors = 0.2,
+                  arrowheads = FALSE,
+                  labSize = 2,
+                  max.overlaps = 15,
+                  lengthConnectors = unit(0.02, "npc")) +
+    ggplot2::coord_cartesian(xlim=c(-5, 5), ylim=c(0,10)) +
+    ggplot2::scale_x_continuous(breaks=seq(-5,5, 1))
+  
+  ggsave(paste0(subDir,"/Volcano_plots/",group1,"_vs_",group2,"_volcano.png"),
+         units ="in",
+         width = 8,
+         height = 8)
+  
+  summary(res)
+  
+  # # shrink log fold changes
+  # resLFC <- lfcShrink(dds, coef=paste0("Group_",group2,"_vs_",group1), type="apeglm")
+  # resLFC
+  # 
+  # # use MA plot to visualize log2 fold changes
+  # plotMA(res,ylim=c(-2,2))
+  # 
+  # # plot the shrunken LFC which should remove noise from low count genes
+  # plotMA(resLFC, ylim=c(-2,2))
+}
+
+```
+
+## 6. generate volcano plots
+
+```{r generate_volcanos, fig.width = 8, fig.asp = .8}
+make_volcano(group2 = "veA_entry_ctrl",
+             group1 = "veA1_wildtype_ctrl")
+
+make_volcano(group2 = "veA_entry_ctrl",
+             group1 = "veA_entry_TSA")
+
+make_volcano(group2 = "veA_wildtype_ctrl",
+             group1 = "veA_wildtype_TSA")
+
+make_volcano(group2 = "veA_pxdAnull_ctrl",
+             group1 = "veA_pxdAnull_TSA")
+
+make_volcano(group2 = "veA_hookAnull_ctrl",
+             group1 = "veA_hookAnull_TSA")
+
+make_volcano(group2 = "veA_entry_ctrl",
+             group1 = "veA_wildtype_ctrl")
+
+make_volcano(group2 = "veA_wildtype_ctrl",
+             group1 = "veA_pxdAnull_ctrl")
+
+make_volcano(group2 = "veA_wildtype_ctrl",
+             group1 = "veA_hookAnull_ctrl")
+
+make_volcano(group2 = "veA1_wildtype_ctrl",
+             group1 = "veA1_wildtype_TSA")
+
+make_volcano(group2 = "veA1_pxdAnull_ctrl",
+             group1 = "veA1_pxdAnull_TSA")
+
+make_volcano(group2 = "veA1_hookAnull_ctrl",
+             group1 = "veA1_hookAnull_TSA")
+
+make_volcano(group2 = "veA1_wildtype_ctrl",
+             group1 = "veA1_pxdAnull_ctrl")
+
+make_volcano(group2 = "veA1_wildtype_ctrl",
+             group1 = "veA1_hookAnull_ctrl")
+
+make_volcano(group2 = "veA_hookAnull_TSA",
+             group1 = "veA1_hookAnull_ctrl")
+
+make_volcano(group2 = "veA_pxdAnull_TSA",
+             group1 = "veA1_pxdAnull_ctrl")
+
+make_volcano(group2 = "veA_entry_TSA",
+             group1 = "veA1_wildtype_ctrl")
+
+```
+
+## 7. Plot counts for single genes
+
+``` {r make_count_plot_function}
+# make a plot for every gene and save it in a folder...
+make_count_plot <- function(geneID) {
+  # geneID = "AN1156"
+  gene <- plotCounts(dds, gene = geneID, intgroup = "Group", returnData = TRUE)
+  # add metadata
+  out <- strsplit(as.character(gene$Group),'_') 
+  gene[,3:5] <- do.call(rbind, out)
+  colnames(gene)[3:5] <- c("velvet","Genotype","Treatment")
+  
+  # Define color palette for genotypes
+  gene$Genotype <- factor(gene$Genotype, levels = c("entry",
+                                                    "wildtype",
+                                                    "pxdAnull",
+                                                    "hookAnull"))#,
+                                                    #"entrybrown",
+                                                    #"wildtypebrown")
+                          
+  # genotype_colors <- c("#717568","#3F4739", "#FF01FB", "#0CCA4A","grey40","grey60")
+  genotype_colors <- c("#717568","#3F4739", "#FF01FB", "#0CCA4A")
+
+ggplot(data=gene,aes(x=Genotype,y=count)) +
+  geom_point(aes(colour = Genotype), size = 4, position = position_jitter(w = 0.3, h = 0)) +
+  # add mean line
+  stat_summary(fun= mean, fun.min=mean, fun.max=mean, geom="crossbar", width=0.5, size=1,color="black") +
+  # add error bars
+  stat_summary(fun.data=mean_se, fun.args = list(mult=1), geom="errorbar", width=0.2, size=1,color="black") +
+  theme_bw()  +
+  scale_color_manual(values = genotype_colors) +
+  theme(legend.position = "none",
+        text = element_text(size = 16),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 14)) +
+  ylab("Normalized count") +
+  ggtitle(paste0("Gene expression of ", geneID)) +
+  facet_wrap(vars(velvet,Treatment), ncol = 4)
+
+  # save graph
+  ggsave(paste0(geneID,"_normalized_counts.png"),
+         device="png",dpi="print",
+         units = "in", width = 8, height = 6,
+         path=paste0(subDir,"/NormCount-Graphs"))
+  # save data table 
+  write.csv(gene,paste0(subDir,"/NormCount-Graphs/Data/",geneID,".csv"))
+}
+
+```
+
+```{r generate_norm_count_plots}
+make_count_plot("AN1156")
+make_count_plot("AN5126")
+
+# TFs/regulators from network analysis:
+list <- c("AN0822",
+"AN10334",
+"AN11093",
+"AN1156",
+"AN2009",
+"AN2919",
+"AN3435",
+"AN5822",
+"AN6243",
+"AN6293",
+"AN6858",
+"AN7776")
+
+# loop through gene list
+for(i in 1:length(list)) {
+  genename = list[i]
+  make_count_plot(geneID=genename) # takes ~1.5 hr to run on 9000 genes
+}
+
+
+# now make a plot for each gene - get list of gene names
+
+H <- as.data.frame(results(dds, alpha=0.1, independentFiltering=FALSE))
+
+list <- unique(row.names(H))
+
+# loop through gene list
+for(i in 1:length(list)) {
+  genename = list[i]
+  # make_count_plot(geneID=genename) # takes ~1.5 hr to run on 9000 genes
+}
+
+
+```
+
+
+
+## 8. Variance stabilizing transformations
+More info can be found at [DESeq2 Bioconductor tutorial](http://bioconductor.org/packages/devel/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#exploring-and-exporting-results):
+
+These figures plot the standard deviation of transformed data. A flat curve of the square root of variance over the mean is ideal.
+```{r variance_stabilization, fig.show='hide'}
+# Extracting transformed values
+vsd <- vst(dds, blind=FALSE)
+ntd <- normTransform(dds)
+
+# extract the matrix of normalized values.
+head(assay(vsd), 3)
+
+# plots
+msd_dds <- meanSdPlot(assay(dds))
+msd_vsd <- meanSdPlot(assay(vsd))
+```
+
+```{r variance_plots, fig.show="hold", out.width="50%"}
+msd_dds$gg + ggtitle("Untransformed data") + ylim(-1,100)
+msd_vsd$gg + ggtitle("Variance stabilized transformation")
+
+```
+
+
+## 10. Data clustering
+Check the heatmap of a subset of the data to see if replicates look similar to each other. This type of heatmap cluster is supervised, since we are picking the 20 genes with the biggest changes.
+
+```{r supervised_clustering}
+
+# find 20 genes with biggest changes from dds
+select <- order(rowMeans(counts(dds,normalized=TRUE)),
+                decreasing=TRUE)[1:20]
+
+# make new data frame with only group genotype/life cycle stage info
+df <- as.data.frame(colData(dds)[,c("Group")])
+colnames(df) <- c("Group")
+rownames(df) <- colnames(assay(ntd))
+
+# heatmap of variance stabilized data
+pheatmap(assay(vsd)[select,], cluster_rows=FALSE, 
+         show_rownames=TRUE,
+         cluster_cols=FALSE, annotation_col=df)
+
+```
+
+## 11. Cluster heatmap and PCA plot of sample-to-sample differences
+Here is the unsupervised clustering of samples.
+
+Interactive explanation of PCA plots is [here](https://bioboot.github.io/bggn213_F20/class-material/pca/)
+
+```{r cluster_heatmap_and_pca}
+# find distances between samples
+sampleDists <- dist(t(assay(vsd)))
+
+# reformat distances
+sampleDistMatrix <- as.matrix(sampleDists)
+
+# make row and column names the same as sample IDs
+rownames(sampleDistMatrix) <- rownames(df)
+colnames(sampleDistMatrix) <- rownames(df)
+
+# generate some nice colors
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+
+# plot it
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+
+# next lets generate a PCA plot on variance stabilized data
+vsd_out <- assay(vsd)
+
+# run PCA analysis
+pca <- prcomp(t(vsd_out))
+
+# plot scree
+fviz_eig(pca)
+
+# Create data frame with metadata and PC3 and PC4 values for input to ggplot
+pcaData <- cbind(metadata[,2:9], pca$x)
+
+# Define color palette for genotypes
+pcaData$Genotype <- factor(pcaData$Genotype, levels = c("entry",
+                                                    "wildtype",
+                                                    "pxdAnull",
+                                                    "hookAnull"))#,
+                                                    #"entrybrown",
+                                                    #"wildtypebrown")
+
+genotype_colors <- c("#717568","#3F4739", "#FF01FB", "#0CCA4A")
+
+# find percent variance for PC1 and PC2
+# summary of variance
+pcasummary <- summary(pca)
+pcasummary
+pc1var <- round(pcasummary$importance[2],digits = 4) * 100
+pc2var <- round(pcasummary$importance[5],digits = 4) * 100
+pc3var <- round(pcasummary$importance[8],digits = 4) * 100
+pc4var <- round(pcasummary$importance[11],digits = 4) * 100
+
+
+# plot PC1 and 2
+ggplot(pcaData,aes(x=PC1, y=PC2, color = Genotype, shape = Treatment)) +
+  geom_point(size=3) + 
+  theme_bw() +
+  scale_color_manual(values = genotype_colors) +
+  xlab(paste0("PC1 (",pc1var,"% variance)")) +
+  ylab(paste0("PC2 (",pc2var,"% variance)")) +
+  #geom_text(hjust=0, vjust=0) +
+  facet_wrap(vars(Background))
+
+ggsave("PCA_plot_pc1_pc2.png",
+       path = subDir,
+       units="in",
+       width = 6, height = 3)
+
+# plot PC3 and 4
+ggplot(pcaData,aes(x=PC3, y=PC4, color = Genotype, shape = Treatment)) +
+  geom_point(size=3) + 
+  theme_bw() +
+  scale_color_manual(values = genotype_colors) +
+  xlab(paste0("PC3 (",pc3var,"% variance)")) +
+  ylab(paste0("PC4 (",pc4var,"% variance)")) +
+  #geom_text(hjust=0, vjust=0) +
+  facet_wrap(vars(Background))
+
+ggsave("PCA_plot_pc3_pc4.png",
+       path = subDir,
+       units="in",
+       width = 6, height = 3)
+
+# export pca data for separate graphing
+write.csv(pcaData[,1:10],paste0(subDir,"/pca_data.csv"),row.names=FALSE)
+
+
+```
+
+## 12. Find lists of significant genes 
+
+```{r find_list_of_sig_genes}
+# find list of genes of interest
+# set threshold values in the function
+# pval cutoff is based on DESeq2 documentation; uses the adjusted p value
+
+genes_of_interest <- function(data, pval=0.05, foldchange=0) {
+  data[1:nrow(data), 2:7] <- lapply(2:ncol(data), function(x) as.numeric(data[[x]]))
+  goi_list = subset(data, data$padj < pval)
+  goi_list = subset(goi_list, abs(goi_list$log2FoldChange) > foldchange)
+  print(paste0("There were ",nrow(goi_list)," genes of interest in the dataset."))
+  return(goi_list)
+}  
+
+# # now run function on all my data tables
+# res_wt_sig <- genes_of_interest(res_wt,"veA_wildtype_GOI")
+# 
+# res_pxda_sig <- genes_of_interest(res_pxda,"veA_pxdAnull_72hr")
+# 
+# res_hooka_sig <- genes_of_interest(res_hooka,"veA_hookAnull_72hr")
+
+```
+## 13. Compile results from deseq in one file 
+
+```{r compile_summary_of_results, warning=FALSE}
+
+# make a new table keeping only log2FC and padj for each genotype
+# write a function to mini-fy each table
+# group1 or group2 = comparison from deseq you want to make mini
+
+make_mini <- function(group1,group2,prefix="",keepmean=TRUE) {
+  # group1 = "veA_wildtype_ctrl"
+  # group2 = "veA_wildtype_TSA"
+  # prefix = "veA_wildtype"
+  temp <- as.data.frame(results(dds,
+                                contrast=c("Group", group1, group2),
+                                alpha=0.1,
+                                independentFiltering=FALSE))
+  temp$ID <- row.names(temp)
+  
+  output <- temp[,c("ID","baseMean","log2FoldChange","padj")]
+  colnames(output) <- c("ID","baseMean",
+                        paste0(prefix,"_L2FC"),
+                        paste0(prefix,"_padj"))
+  
+  # if specified above, do not keep the baseMean column
+  if(keepmean==FALSE) {
+    output <- output[,c("ID",
+                        paste0(prefix,"_L2FC"),
+                        paste0(prefix,"_padj"))]
+  }
+  
+  return(output)
+}
+
+# get gene symbol and description info
+gene_info <- read.csv("Anidulans_genome_files/Anidulans-65_complete_gene_list.csv")
+gene_info <- gene_info[,1:3]
+colnames(gene_info) <- c("ID","symbol","description")
+
+# now run make_mini on all dataframes of interest
+# this is so we can merge the results together nicely at the end
+
+# velvet veA+ conditions +- TSA:
+mini_veA_entry <- make_mini(group2 = "veA_entry_ctrl",
+                           group1 = "veA_entry_TSA",
+                           prefix = "entry",
+                           keepmean=TRUE)
+
+mini_veA_wt <- make_mini(group2 = "veA_wildtype_ctrl",
+                           group1 = "veA_wildtype_TSA",
+                           prefix = "wt",
+                           keepmean=FALSE)
+
+mini_veA_pxdA <- make_mini(group2 = "veA_pxdAnull_ctrl",
+                           group1 = "veA_pxdAnull_TSA",
+                           prefix = "pxdA",
+                           keepmean=FALSE)
+
+mini_veA_hookA <- make_mini(group2 = "veA_hookAnull_ctrl",
+                           group1 = "veA_hookAnull_TSA",
+                           prefix = "hookA",
+                           keepmean=FALSE)
+
+# merge things together
+merged_veA_TSA <- merge(gene_info,mini_veA_entry,by="ID",all=TRUE)
+merged_veA_TSA <- merge(merged_veA_TSA,mini_veA_wt,by="ID",all=TRUE)
+merged_veA_TSA <- merge(merged_veA_TSA,mini_veA_pxdA,by="ID",all=TRUE)
+merged_veA_TSA <- merge(merged_veA_TSA,mini_veA_hookA,by="ID",all=TRUE)
+
+# find rows that have symbol=NA in merged_data
+na_rows <- merged_veA_TSA[is.na(merged_veA_TSA$symbol), ]
+na_other_rows <- merged_veA_TSA[!is.na(merged_veA_TSA$symbol), ]
+
+# fix symbol
+na_rows$symbol <- na_rows$ID
+
+# merge together again
+merged_veA_TSA <- rbind(na_rows,na_other_rows)
+
+# add those rows to the original gene_info file too
+na_rows<-na_rows[,1:3]
+gene_info <- rbind(gene_info,na_rows)
+
+
+# lab strain veA1 conditions +- TSA:
+mini_veA1_wt <- make_mini(group2 = "veA1_wildtype_ctrl",
+                           group1 = "veA1_wildtype_TSA",
+                           prefix = "wt",
+                           keepmean=TRUE)
+
+mini_veA1_pxdA <- make_mini(group2 = "veA1_pxdAnull_ctrl",
+                           group1 = "veA1_pxdAnull_TSA",
+                           prefix = "pxdA",
+                           keepmean=FALSE)
+
+mini_veA1_hookA <- make_mini(group2 = "veA1_hookAnull_ctrl",
+                           group1 = "veA1_hookAnull_TSA",
+                           prefix = "hookA",
+                           keepmean=FALSE)
+# merge things together
+merged_veA1_TSA <- merge(gene_info,mini_veA1_wt,by="ID",all=TRUE)
+merged_veA1_TSA <- merge(merged_veA1_TSA,mini_veA1_pxdA,by="ID",all=TRUE)
+merged_veA1_TSA <- merge(merged_veA1_TSA,mini_veA1_hookA,by="ID",all=TRUE)
+
+# wildtypes and KOs, control condition only
+mini_veA_veA1 <- make_mini(group2 = "veA_entry_ctrl",
+                           group1 = "veA1_wildtype_ctrl",
+                           prefix = "veA_veA1",
+                           keepmean=TRUE)
+
+mini_veA_pxdAKO <- make_mini(group2 = "veA_wildtype_ctrl",
+                           group1 = "veA_pxdAnull_ctrl",
+                           prefix = "veA_pxdA",
+                           keepmean=FALSE)
+
+mini_veA_hookAKO <- make_mini(group2 = "veA_wildtype_ctrl",
+                           group1 = "veA_hookAnull_ctrl",
+                           prefix = "veA_hookA",
+                           keepmean=FALSE)
+
+mini_veA1_pxdAKO <- make_mini(group2 = "veA1_wildtype_ctrl",
+                           group1 = "veA1_pxdAnull_ctrl",
+                           prefix = "veA1_pxdA",
+                           keepmean=FALSE)
+
+mini_veA1_hookAKO <- make_mini(group2 = "veA1_wildtype_ctrl",
+                           group1 = "veA1_hookAnull_ctrl",
+                           prefix = "veA1_hookA",
+                           keepmean=FALSE)
+
+merged_KOs_ctrl <- merge(gene_info,mini_veA_veA1,by="ID",all=TRUE)
+merged_KOs_ctrl <- merge(merged_KOs_ctrl,mini_veA_pxdAKO,by="ID",all=TRUE)
+merged_KOs_ctrl <- merge(merged_KOs_ctrl,mini_veA_hookAKO,by="ID",all=TRUE)
+merged_KOs_ctrl <- merge(merged_KOs_ctrl,mini_veA1_pxdAKO,by="ID",all=TRUE)
+merged_KOs_ctrl <- merge(merged_KOs_ctrl,mini_veA1_hookAKO,by="ID",all=TRUE)
+
+# export merged files as csv without trimming zeros
+write.csv(merged_veA_TSA,paste0(subDir,"/Merged_veA_TSA_results_untrimmed.csv"),row.names=FALSE)
+write.csv(merged_veA1_TSA,paste0(subDir,"/Merged_veA1_TSA_results_untrimmed.csv"),row.names=FALSE)
+write.csv(merged_KOs_ctrl,paste0(subDir,"/Merged_allmutants_ctrl_results_untrimmed.csv"),row.names=FALSE)
+
+# now remove rows with zero basemean
+merged_veA_TSA <- subset(merged_veA_TSA, baseMean > 0)
+merged_veA1_TSA <- subset(merged_veA1_TSA, baseMean > 0)
+merged_KOs_ctrl <- subset(merged_KOs_ctrl, baseMean > 0)
+
+write.csv(merged_veA_TSA,paste0(subDir,"/Merged_veA_TSA_results.csv"),row.names=FALSE)
+write.csv(merged_veA1_TSA,paste0(subDir,"/Merged_veA1_TSA_results.csv"),row.names=FALSE)
+write.csv(merged_KOs_ctrl,paste0(subDir,"/Merged_allmutants_ctrl_results.csv"),row.names=FALSE)
+
+```
+
+## 14. Check expression of secmet clusters
+
+
+```{r secmet_cluster_graphs}
+# first read in the list of secmet clusters
+clusters_anti <- read.csv("Anidulans_genome_files/Antismash_nocassis/all_clusters_genelist_antismashv7.1.0.csv",header=TRUE)
+known_clusters <- read.csv("Anidulans_genome_files/anid_known_clusters_manually_labeled.csv")
+
+# append gene lists together and label source as either antismash or manual
+clusters_anti <- clusters_anti[,c("Cluster","old_locus_tags","type")]
+clusters_anti$Source <- "antismash_v7.1.0"
+known_clusters_manual <- known_clusters[,c("BackboneGeneName","GeneID","type")]
+known_clusters_manual$Source <- "manual_annot_from_lit"
+
+# rename columns to match between the two
+colnames(clusters_anti)[1:2] <- c("Cluster.name","GeneID")
+colnames(known_clusters_manual)[1:2] <- c("Cluster.name","GeneID")
+
+# merge them together
+clusters <- rbind(clusters_anti,known_clusters_manual)
+
+# add deeploc results on top
+deeploc <- read.csv("Anidulans_genome_files/anid_compiled_deeploc.csv")
+deeploc_mini <- deeploc[,c("geneID",
+                           "Localizations",
+                           "Signals",
+                           "Peroxisome")]
+head(deeploc_mini)
+
+# get list of entries containing "perox" in signals
+deeploc_mini <- deeploc_mini %>%
+  mutate(PTS = ifelse(grepl("Perox", Signals), "PTS", ""))
+
+# get list of all PTS genes
+deeploc_pts <- subset(deeploc_mini, PTS == "PTS")
+
+# get list of high PTS score genes
+deeploc_pts_h <- subset(deeploc_pts, Peroxisome >= 0.5)
+
+# add additional PTS annotation to type column in clusters
+clusters$PTS <- NA
+table(clusters$type)
+clusters$PTS <- ifelse(clusters$GeneID %in% deeploc_pts$geneID, "PTS-l", clusters$PTS)
+clusters$PTS <- ifelse(clusters$GeneID %in% deeploc_pts_h$geneID, "PTS-h", clusters$PTS)
+table(clusters$PTS)
+
+# merge both type and PTS columns into one comma sep column
+clusters <- clusters %>%
+  mutate(type = paste(type, PTS, sep = ", "))
+table(clusters$type)
+
+# save output
+write.csv(clusters,paste0(subDir,"/Merged_known_unknown_clusters.csv"),row.names=FALSE)
+
+# get list of clusters
+cluster_list <- unique(clusters$Cluster.name)
+
+# get gene type for each cluster
+# add "type" so it is labeled on the plot
+types <- clusters[,c("GeneID","type")]
+# remove duplicate entries
+types <- distinct(types)
+colnames(types)[1]<-"ID"
+
+# there is a duplicate row for one of the clusters?? why??
+length(unique(types$ID))
+# 926
+types[types$ID %in% "AN7903",]
+#         ID         type
+# 94  AN7903       NA, NA
+# 903 AN7903 backbone, NA
+
+# for some reason rows 94 and 903 are still duplicated... remove row 94 manually to proceed
+types <- types[c(1:93,95:927),]
+
+# add type to the dataframe
+types2 <- merge(gene_info,types,by="ID",all.x=TRUE,all.y=FALSE)
+types <- types2[,c("symbol","type")]
+
+  
+  
+# now write a function to subset merged data by clusters and make a heatmap for each cluster
+# each row is a gene
+# each column is a sample 
+# color by l2fc
+# add text of p value in the middle
+
+# MUST specify plot order for x axis of heatmap!!!
+cluster_heatmaps <- function(cluster_name,data=merged_veA_TSA,plot_order="skip",comparison="test") {
+  
+  # cluster_name = cluster_list[i]
+  # data = merged_veA_TSA
+  # plot_order = c("entry","wt","pxdA","hookA")
+  # comparison = "test"
+  
+  # make a new folder for the output
+  dir.create(paste0(subDir,"/Cluster_heatmaps/",comparison), showWarnings = FALSE)
+  dir.create(paste0(subDir,"/Cluster_heatmaps/",comparison,"/Data"), showWarnings = FALSE)
+
+  # get list of genes in the cluster
+  cluster_genelist <- unlist(subset(clusters, Cluster.name == cluster_name)[2])
+  # remove duplicates
+  cluster_genelist <- unique(cluster_genelist)
+  # subset data
+  data <- data[data$ID %in% cluster_genelist,]
+  
+
+  # make rownames the symbols, instead of geneID
+  rownames(data) <- data$symbol
+  
+  # check if there are missing entries
+  missing_genes <- setdiff(cluster_genelist,data$ID)
+
+  
+  # if there are, add NA rows
+  if (length(missing_genes) > 0) {
+    # add same # rows as # missing genes
+    na_rows <- data.frame(matrix(NA, nrow = length(missing_genes), ncol = (ncol(data)) ))
+    # rename columns
+    colnames(na_rows) <- colnames(data)[1:(ncol(data))]
+    # populate ID column with missing_genes
+    na_rows$ID <- missing_genes
+    
+    # add row names
+    rownames(na_rows) <- missing_genes
+
+    # append onto data
+    data <- rbind(data,na_rows)
+  }
+
+  # if all data is na, then skip
+  if (!all(is.na(data$baseMean))) {
+    # Subset the 'data' variable to include only the relevant columns
+    names <- colnames(data)
+    # find colnames containing "L2FC"
+    index_L2FC <- grep("L2FC", names)
+    # subset dataframe to include only L2FC data
+    heatmap_data <- data[, c(1, index_L2FC)]
+    # replace ID column with rownames
+    heatmap_data$ID <- row.names(heatmap_data)
+    ## shorten colnames
+    #colnames(heatmap_data) <- sub("_L2FC", "", colnames(heatmap_data))
+    
+    # repeat for pval data
+    index_pval <- grep("padj", names)
+    pval_data <- data[, c(1, index_pval)]
+    pval_data$ID <- row.names(pval_data)
+
+    #colnames(pval_data) <- sub("_padj", "", colnames(pval_data))
+
+    # reformat for ggplot
+    heatmap_data_long <- pivot_longer(heatmap_data,
+                                      cols = ends_with("_L2FC"),
+                                      names_to = "Condition",
+                                      values_to = "Log2FC")
+    
+    pval_data_long <- pivot_longer(pval_data,
+                                   cols = ends_with("_padj"),
+                                   names_to = "Condition",
+                                   values_to = "padj")
+    
+    # remove suffix from Condition column
+    heatmap_data_long$Condition <- sub("_L2FC", "", heatmap_data_long$Condition)
+
+    pval_data_long$Condition <- sub("_padj", "", pval_data_long$Condition)
+    
+    # indicate stars for significance of pval_data_long
+    # Add a new column "sig" based on padj values
+    pval_data_long$sig <- with(pval_data_long, case_when(
+      padj < 0.0001 ~ "****",
+      padj < 0.001  ~ "***",
+      padj < 0.01   ~ "**",
+      padj < 0.1    ~ "*",
+      TRUE          ~ ""
+    ))
+    
+    # merge pval onto heatmap
+    heatmap_data_long$padj <- pval_data_long$padj
+    heatmap_data_long$sig <- pval_data_long$sig
+    
+    # change min/max of heatmap data so it fits on the scale
+    heatmap_data_long$Log2FC_lim <- with(heatmap_data_long, ifelse(Log2FC > 2, 2, ifelse(Log2FC < -2, -2, Log2FC)))
+    
+    if (length(plot_order)>1) {
+      heatmap_data_long$Condition <- factor(heatmap_data_long$Condition,
+                                            levels = plot_order)
+    }
+    
+    # Run clustering to organize the heatmap
+    matrix <- as.matrix(heatmap_data[,c(2:ncol(heatmap_data))])
+    rownames(matrix) <- heatmap_data$ID
+    matrix[is.nan(matrix)] <- 0
+    matrix[is.na(matrix)] <- 0
+
+    dendro <- as.dendrogram(hclust(d = dist(x = matrix)))
+    
+    # Create dendro
+    dendro_plot <- ggdendrogram(data = dendro, rotate = TRUE)
+    
+    # Preview the plot
+    # print(dendro_plot)
+    
+    gene_order <- order.dendrogram(dendro)
+    
+    # add gene type info
+    heatmap_data_long2 <- merge(heatmap_data_long,types,by.x="ID",by.y="symbol")
+
+    heatmap_data_long2$ID <- factor(x = heatmap_data_long2$ID,
+                            levels = heatmap_data$ID[gene_order], 
+                            ordered = TRUE)
+    
+    
+    
+    # color by type
+    yaxis_labels <- unique(heatmap_data_long2$ID)
+    # order by levels
+    yaxis_labels <- sort(yaxis_labels)
+    
+    # define a color vector
+    yaxis_colors <- case_when(
+      types$type == "transporter, NA" ~ "chartreuse3",
+      types$type == "transcription factor, NA" ~ "dodgerblue2",
+      types$type == "backbone, NA" ~ "chocolate",
+      types$type == "backbone, PTS-l" ~ "coral3",
+      types$type == "backbone, PTS-h" ~ "coral4",
+      types$type == "NA, PTS-l" ~ "violet",
+      types$type == "NA, PTS-h" ~ "violetred",
+      types$type == "NA, NA" ~ "black"  # For any other cases or NA types
+    )
+    # Subset yaxis_colors for IDs present in yaxis_labels
+    yaxis_colors <- yaxis_colors[match(yaxis_labels, types$symbol)]
+    
+    # Create the heatmap using ggplot2
+    ggplot(heatmap_data_long2, aes(x = Condition, y = ID, fill = Log2FC_lim, label = sig)) +
+      geom_tile() +
+      geom_text(aes(label = sig), size = 8, vjust = 0.8) +
+      scale_fill_gradient2(low = "blue", mid = "white", high = "red",
+                           breaks = c(-2, -1, 0, 1, 2),
+                           limits = c(-2, 2),
+                           labels = c("-2", "-1", "0", "1","2"),
+                           guide = guide_colorbar(title = paste0("Log2FC \n",comparison))) +
+      labs(title = paste0("<span style='font-size:16pt'>**",cluster_name,"** </span>",
+                          "<span style='font-size:8pt'>
+                          <span style='color:#d2691e;'>backbone</span>,
+                          <span style='color:#ee82ee'>PTS-l</span>,
+                          <span style='color:#d02090'>PTS-h</span>,
+                          <span style='color:#66cd00'>transporter</span>,
+                          <span style='color:#1c86ee'>TF</span>
+                          </span>"),
+           x = "Samples", y = "ID") +
+      theme_minimal() +
+      theme(plot.title = element_markdown(lineheight = 1.1),
+            axis.text.x = element_text(angle = 45, hjust = 1),
+            axis.text.y = element_text(colour = yaxis_colors), # this adds colorful text to the plot
+            axis.text = element_text(size = 12))
+    
+    
+    # calculate ideal height based on the number of genes
+    # want 2 inches for title + column labels
+    # then 0.2 inches for each gene
+    h <- length(cluster_genelist) * 0.3 + 2
+    
+    # save the graph
+    ggsave(paste0(cluster_name,"_",comparison,"_heatmap.png"),
+           device="png",
+           width = 5, height = h, dpi = 300, units = "in",
+           path=paste0(subDir,"/Cluster_heatmaps/",comparison)
+    )
+    
+    # save the data
+    write.csv(heatmap_data_long2,paste0(subDir,"/Cluster_heatmaps/",comparison,"/Data/",cluster_name,"_",comparison,"_heatmap_data.csv"))
+  }
+}
+
+# now run the function on each cluster
+
+for (i in 1:length(cluster_list)) {
+  cluster_heatmaps(cluster_list[i],
+                   data=merged_veA_TSA,
+                   plot_order=c("entry","wt","pxdA","hookA"),
+                   comparison="veA_ctrl_vs_TSA")
+}
+
+# run again for another set of comparisons
+for (i in 1:length(cluster_list)) {
+  cluster_heatmaps(cluster_list[i],
+                   data=merged_veA1_TSA,
+                   plot_order=c("wt","pxdA","hookA"),
+                   comparison="veA1_ctrl_vs_TSA")
+}
+
+# and the final set, mutants vs wildtype for control condition
+for (i in 1:length(cluster_list)) {
+  cluster_heatmaps(cluster_list[i],
+                   data=merged_KOs_ctrl,
+                   plot_order=c("veA_veA1","veA_pxdA","veA_hookA","veA1_pxdA","veA1_hookA"),
+                   comparison="ctrl_wt_vs_mutants")
+}
+```
+
+
+
+```{r make_normcount_heatmaps}
+# now make heatmaps of normalized counts, not fold changes
+# this is still WIP
+# first find normcounts of all genes
+all_counts <- counts(dds, normalized=T)
+
+cluster_normcount <- function(cluster_name, bkgd = "veA") {
+  
+  # cluster_name = cluster_list[1]
+
+  # make a new folder for the output
+  dir.create(paste0(subDir,"/Cluster_normcounts/",bkgd),
+             showWarnings = FALSE)
+  dir.create(paste0(subDir,"/Cluster_normcounts/",bkgd,"/Data"),
+             showWarnings = FALSE)
+  
+  # get list of genes in the cluster
+  cluster_genelist <- unlist(subset(clusters, Cluster.name == cluster_name)[1])
+  
+  # subset data
+  data <- as.data.frame(all_counts)
+  
+  data <- data[cluster_genelist,]
+  
+  rownames(data) <- cluster_genelist
+  data$ID <- cluster_genelist
+  
+  # transpose the matrix
+  data <- as.data.frame(t(data))
+  data$Sample_ID <- row.names(data)
+  
+  # add in metadata
+  data2 <- merge(data,metadata[,2:7],by="Sample_ID")
+  
+  # subset samples based on comparisons to keep
+  data3 <- data2[data2$Background %in% bkgd, ]
+  
+  # define colors and plot order
+  if (bkgd == "veA") {
+    # define colors
+
+    genotype_colors_all <- c("#717568","#717568",
+                         "#3F4739","#3F4739",
+                         "#FF01FB","#FF01FB",
+                         "#0CCA4A","#0CCA4A")
+    plot_order = c("veA_entry_ctrl",
+                   "veA_entry_TSA",
+                   "veA_wildtype_ctrl",
+                   "veA_wildtype_TSA",
+                   "veA_pxdAnull_ctrl",
+                   "veA_pxdAnull_TSA",
+                   "veA_hookAnull_ctrl",
+                   "veA_hookAnull_TSA")
+  } else if (bkgd == "veA1") {
+    genotype_colors_all <- c("#3F4739","#3F4739",
+                         "#FF01FB","#FF01FB",
+                         "#0CCA4A","#0CCA4A")
+    plot_order = c("veA1_wildtype_ctrl",
+                   "veA1_wildtype_TSA",
+                   "veA1_pxdAnull_ctrl",
+                   "veA1_pxdAnull_TSA",
+                   "veA1_hookAnull_ctrl",
+                   "veA1_hookAnull_TSA")
+  } else {
+    print("Warning: specify veA or veA1 for bkgd.")
+  }
+  
+  # make a plot of the gene expression for each gene
+  # make wide to tall
+  # Melt the data
+  melted_data <- melt(data3,
+                      id.vars = c("Sample_ID",
+                                  "Background",
+                                  "Genotype",
+                                  "Group",
+                                  "Strain",
+                                  "Treatment"))
+  
+  # Rename the variable and value columns
+  colnames(melted_data)[7:8] <- c("ID","Counts")
+  
+  # set plot order
+  melted_data$Group <- factor(melted_data$Group, levels = plot_order)
+  melted_data$Counts <- as.numeric(melted_data$Counts)
+  
+  # make a plot
+  ggplot(melted_data,aes(x = Group, y = Counts,color=Group)) +
+    geom_point(aes(shape = Treatment)) +
+    facet_wrap(vars(ID), scales = "free_y", ncol = 4) +
+    scale_color_manual(values = genotype_colors_all) +
+    theme_bw() +
+    ggtitle(paste0(cluster_name," cluster: normalized counts")) +
+    theme(axis.text.x = element_blank())
+  
+  # calculate ideal height based on the number of genes
+  # want 1 inch for title + labels
+  # then we want 1.5 inches for each graph
+  h <- 1 + ceiling(length(cluster_genelist)/4) * 1.5
+  
+  # save the graph
+  ggsave(paste0(cluster_name,"_",bkgd,"_normcounts.png"),
+         device="png",
+         width = 7, height = h, dpi = 300, units = "in",
+         path=paste0(subDir,"/Cluster_normcounts/",bkgd))
+  
+  # save the data
+  write.csv(melted_data,paste0(subDir,"/Cluster_normcounts/",bkgd,"/Data/",cluster_name,"_",bkgd,"_normcount_data.csv"))
+  
+}
+
+# run for veA on all clusters
+# for (i in 1:length(cluster_list)) {
+#   cluster_normcount(cluster_list[i],
+#                    bkgd = "veA")
+#   cluster_normcount(cluster_list[i],
+#                    bkgd = "veA1")
+# }
+
+```
+
+```{r session_info}
+sessionInfo()
+```

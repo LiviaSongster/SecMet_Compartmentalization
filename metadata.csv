@@ -1,0 +1,57 @@
+Date_Prepped,Sample_ID,Background,Genotype,Group,Sample,Replicate,Strain,Treatment,Supplements,Prepped_by,Notes,MS_filename,RIN
+23_Sept_2023,Z2,veA,entry,veA_entry_ctrl,veA_entry_ctrl.1,1,1492,ctrl,pyro U2,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_2_GKZ2_Aspergillus_Slot2.2_1_2113.d,5.7
+23_Sept_2023,Z6,veA,entry,veA_entry_ctrl,veA_entry_ctrl.2,2,1492,ctrl,pyro U2,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_10_GKZ6_Aspergillus_Slot2.10_1_2129.d,7.1
+23_Sept_2023,Z10,veA,entry,veA_entry_ctrl,veA_entry_ctrl.3,3,1492,ctrl,pyro U2,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_17_GK_Z10_Aspergillus_Slot2.2_1_2368.d,6.9
+23_Sept_2023,Z14,veA,entry,veA_entry_ctrl,veA_entry_ctrl.4,4,1492,ctrl,pyro U2,Liv,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_20_GK_Z14_Aspergillus_Slot2.5_1_2371.d,5.6
+23_Sept_2023,Z1,veA,entry,veA_entry_TSA,veA_entry_TSA.1,1,1492,TSA,pyro U2,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_1_GKZ1_Aspergillus_Slot2.1_1_2112.d,6.1
+23_Sept_2023,Z5,veA,entry,veA_entry_TSA,veA_entry_TSA.2,2,1492,TSA,pyro U2,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_9_GKZ5_Aspergillus_Slot2.9_1_2127.d,7.3
+23_Sept_2023,Z9,veA,entry,veA_entry_TSA,veA_entry_TSA.3,3,1492,TSA,pyro U2,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_16_GK_Z9_Aspergillus_Slot2.1_1_2350.d,6.8
+23_Sept_2023,Z13,veA,entry,veA_entry_TSA,veA_entry_TSA.4,4,1492,TSA,pyro U2,Liv,,,7.1
+16_Sept_2023,Y8,veA,hookAnull,veA_hookAnull_ctrl,veA_hookAnull_ctrl.1,1,1630,ctrl,,Liv,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_8_GK8_Aspergillus_Slot2.8_1_2126.d,7.5
+16_Sept_2023,Y16,veA,hookAnull,veA_hookAnull_ctrl,veA_hookAnull_ctrl.2,2,1630,ctrl,,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_16_GK16_Aspergillus_Slot2.16_1_2136.d,9
+16_Sept_2023,Y24,veA,hookAnull,veA_hookAnull_ctrl,veA_hookAnull_ctrl.3,3,1630,ctrl,,Liv,dried out; collected mycelia on cellophane in tubes,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_26_GK_24_Aspergillus_Slot2.11_1_2378.d,8.2
+16_Sept_2023,Y32,veA,hookAnull,veA_hookAnull_ctrl,veA_hookAnull_ctrl.4,4,1630,ctrl,,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_30_GK_32_Aspergillus_Slot2.15_1_2382.d,8.9
+16_Sept_2023,Y7,veA,hookAnull,veA_hookAnull_TSA,veA_hookAnull_TSA.1,1,1630,TSA,,Liv,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_7_GK7_Aspergillus_Slot2.7_1_2125.d,8.7
+16_Sept_2023,Y15,veA,hookAnull,veA_hookAnull_TSA,veA_hookAnull_TSA.2,2,1630,TSA,,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_15_GK15_Aspergillus_Slot2.15_1_2135.d,8.8
+16_Sept_2023,Y23,veA,hookAnull,veA_hookAnull_TSA,veA_hookAnull_TSA.3,3,1630,TSA,,Liv,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_25_GK_23_Aspergillus_Slot2.10_1_2377.d,9.1
+16_Sept_2023,Y31,veA,hookAnull,veA_hookAnull_TSA,veA_hookAnull_TSA.4,4,1630,TSA,,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_29_GK_31_Aspergillus_Slot2.14_1_2381.d,8.7
+16_Sept_2023,Y6,veA,pxdAnull,veA_pxdAnull_ctrl,veA_pxdAnull_ctrl.1,1,1628,ctrl,,Liv,green contaminant; cut out,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_6_GK6_Aspergillus_Slot2.6_1_2123.d,8.9
+16_Sept_2023,Y14,veA,pxdAnull,veA_pxdAnull_ctrl,veA_pxdAnull_ctrl.2,2,1628,ctrl,,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_14_GK14_Aspergillus_Slot2.14_1_2134.d,9.3
+16_Sept_2023,Y22,veA,pxdAnull,veA_pxdAnull_ctrl,veA_pxdAnull_ctrl.3,3,1628,ctrl,,Liv,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_24_GK_22_Aspergillus_Slot2.9_1_2376.d,9
+16_Sept_2023,Y30,veA,pxdAnull,veA_pxdAnull_ctrl,veA_pxdAnull_ctrl.4,4,1628,ctrl,,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_28_GK_30_Aspergillus_Slot2.13_1_2380.d,9
+16_Sept_2023,Y5,veA,pxdAnull,veA_pxdAnull_TSA,veA_pxdAnull_TSA.1,1,1628,TSA,,Liv,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_5_GK5_Aspergillus_Slot2.5_1_2122.d,8.9
+16_Sept_2023,Y13,veA,pxdAnull,veA_pxdAnull_TSA,veA_pxdAnull_TSA.2,2,1628,TSA,,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_13_GK13_Aspergillus_Slot2.13_1_2133.d,9.2
+16_Sept_2023,Y21,veA,pxdAnull,veA_pxdAnull_TSA,veA_pxdAnull_TSA.3,3,1628,TSA,,Liv,green contaminant; cut out,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_23_GK_21_Aspergillus_Slot2.8_1_2375.d,8.7
+16_Sept_2023,Y29,veA,pxdAnull,veA_pxdAnull_TSA,veA_pxdAnull_TSA.4,4,1628,TSA,,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_27_GK_29_Aspergillus_Slot2.12_1_2379.d,9.3
+23_Sept_2023,Z4,veA,wildtype,veA_wildtype_ctrl,veA_wildtype_ctrl.1,1,1606,ctrl,pyro,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_4_GKZ4_Aspergillus_Slot2.4_1_2120.d,7.2
+23_Sept_2023,Z8,veA,wildtype,veA_wildtype_ctrl,veA_wildtype_ctrl.2,2,1606,ctrl,pyro,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_12_GKZ8_Aspergillus_Slot2.12_1_2132.d,6.9
+23_Sept_2023,Z12,veA,wildtype,veA_wildtype_ctrl,veA_wildtype_ctrl.3,3,1606,ctrl,pyro,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_19_GK_Z12_Aspergillus_Slot2.4_1_2370.d,5.8
+23_Sept_2023,Z16,veA,wildtype,veA_wildtype_ctrl,veA_wildtype_ctrl.4,4,1606,ctrl,pyro,Liv,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_22_GK_Z16_Aspergillus_Slot2.7_1_2374.d,7.4
+23_Sept_2023,Z3,veA,wildtype,veA_wildtype_TSA,veA_wildtype_TSA.1,1,1606,TSA,pyro,Garry,,,7.3
+23_Sept_2023,Z7,veA,wildtype,veA_wildtype_TSA,veA_wildtype_TSA.2,2,1606,TSA,pyro,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_11_GKZ7_Aspergillus_Slot2.11_1_2130.d,7.4
+23_Sept_2023,Z11,veA,wildtype,veA_wildtype_TSA,veA_wildtype_TSA.3,3,1606,TSA,pyro,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_18_GK_Z11_Aspergillus_Slot2.3_1_2369.d,7.3
+23_Sept_2023,Z15,veA,wildtype,veA_wildtype_TSA,veA_wildtype_TSA.4,4,1606,TSA,pyro,Liv,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_21_GK_Z15_Aspergillus_Slot2.6_1_2372.d,7.5
+16_Sept_2023,F,veA1,hookAnull,veA1_hookAnull_ctrl,veA1_hookAnull_ctrl.1,1,1675,ctrl,U2,Garry,cellophane falling apart; collected mycelia on cellophane in tubes,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_41_GK_F_Aspergillus_Slot2.26_1_2393.d,9
+16_Sept_2023,L,veA1,hookAnull,veA1_hookAnull_ctrl,veA1_hookAnull_ctrl.2,2,1675,ctrl,U2,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_45_GK_L_Aspergillus_Slot2.30_1_2397.d,9.8
+16_Sept_2023,R,veA1,hookAnull,veA1_hookAnull_ctrl,veA1_hookAnull_ctrl.3,3,1675,ctrl,U2,Liv,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_49_GK_R_Aspergillus_Slot2.34_1_2401.d,7.7
+16_Sept_2023,X,veA1,hookAnull,veA1_hookAnull_ctrl,veA1_hookAnull_ctrl.4,4,1675,ctrl,U2,Liv,dried out; collected mycelia on cellophane in tubes,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_53_GK_X_Aspergillus_Slot2.38_1_2405.d,9
+16_Sept_2023,E,veA1,hookAnull,veA1_hookAnull_TSA,veA1_hookAnull_TSA.1,1,1675,TSA,U2,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_40_GK_E_Aspergillus_Slot2.25_1_2392.d,8.9
+16_Sept_2023,K,veA1,hookAnull,veA1_hookAnull_TSA,veA1_hookAnull_TSA.2,2,1675,TSA,U2,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_44_GK_K_Aspergillus_Slot2.29_1_2396.d,8.9
+16_Sept_2023,Q,veA1,hookAnull,veA1_hookAnull_TSA,veA1_hookAnull_TSA.3,3,1675,TSA,U2,Liv,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_48_GK_Q_Aspergillus_Slot2.33_1_2400.d,8.6
+16_Sept_2023,W,veA1,hookAnull,veA1_hookAnull_TSA,veA1_hookAnull_TSA.4,4,1675,TSA,U2,Liv,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_52_GK_W_Aspergillus_Slot2.37_1_2404.d,9.5
+16_Sept_2023,D,veA1,pxdAnull,veA1_pxdAnull_ctrl,veA1_pxdAnull_ctrl.1,1,1673,ctrl,U2,Garry,cellophane falling apart; collected mycelia on cellophane in tubes,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_39_GK_D_Aspergillus_Slot2.24_1_2391.d,9.4
+16_Sept_2023,J,veA1,pxdAnull,veA1_pxdAnull_ctrl,veA1_pxdAnull_ctrl.2,2,1673,ctrl,U2,Garry,green contaminant; cut out,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_43_GK_J_Aspergillus_Slot2.28_1_2395.d,8.8
+16_Sept_2023,P,veA1,pxdAnull,veA1_pxdAnull_ctrl,veA1_pxdAnull_ctrl.3,3,1673,ctrl,U2,Liv,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_47_GK_P_Aspergillus_Slot2.32_1_2399.d,8.2
+16_Sept_2023,V,veA1,pxdAnull,veA1_pxdAnull_ctrl,veA1_pxdAnull_ctrl.4,4,1673,ctrl,U2,Liv,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_51_GK_V_Aspergillus_Slot2.36_1_2403.d,9.6
+16_Sept_2023,C,veA1,pxdAnull,veA1_pxdAnull_TSA,veA1_pxdAnull_TSA.1,1,1673,TSA,U2,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_38_GK_C_Aspergillus_Slot2.23_1_2390.d,8.9
+16_Sept_2023,I,veA1,pxdAnull,veA1_pxdAnull_TSA,veA1_pxdAnull_TSA.2,2,1673,TSA,U2,Garry,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_42_GK_I_Aspergillus_Slot2.27_1_2394.d,8.6
+16_Sept_2023,O,veA1,pxdAnull,veA1_pxdAnull_TSA,veA1_pxdAnull_TSA.3,3,1673,TSA,U2,Liv,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_46_GK_O_Aspergillus_Slot2.31_1_2398.d,7.7
+16_Sept_2023,U,veA1,pxdAnull,veA1_pxdAnull_TSA,veA1_pxdAnull_TSA.4,4,1673,TSA,U2,Liv,,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_50_GK_U_Aspergillus_Slot2.35_1_2402.d,9.6
+23_Sept_2023,Z18,veA1,wildtype,veA1_wildtype_ctrl,veA1_wildtype_ctrl.1,1,15,ctrl,pyro U2,Liv,AB,,7.4
+23_Sept_2023,Z20,veA1,wildtype,veA1_wildtype_ctrl,veA1_wildtype_ctrl.2,2,15,ctrl,pyro U2,Liv,AD,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_33_GK_Z20_Aspergillus_Slot2.18_1_2385.d,7.2
+23_Sept_2023,Z22,veA1,wildtype,veA1_wildtype_ctrl,veA1_wildtype_ctrl.3,3,15,ctrl,pyro U2,Liv,AF,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_35_GK_Z22_Aspergillus_Slot2.20_1_2387.d,7.4
+23_Sept_2023,Z24,veA1,wildtype,veA1_wildtype_ctrl,veA1_wildtype_ctrl.4,4,15,ctrl,pyro U2,Liv,AH,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_37_GK_Z24_Aspergillus_Slot2.22_1_2389.d,7.4
+23_Sept_2023,Z17,veA1,wildtype,veA1_wildtype_TSA,veA1_wildtype_TSA.1,1,15,TSA,pyro U2,Liv,AA,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_31_GK_Z17_Aspergillus_Slot2.16_1_2383.d,7.2
+23_Sept_2023,Z19,veA1,wildtype,veA1_wildtype_TSA,veA1_wildtype_TSA.2,2,15,TSA,pyro U2,Liv,AC,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_32_GK_Z19_Aspergillus_Slot2.17_1_2384.d,7.4
+23_Sept_2023,Z21,veA1,wildtype,veA1_wildtype_TSA,veA1_wildtype_TSA.3,3,15,TSA,pyro U2,Liv,AE,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_34_GK_Z21_Aspergillus_Slot2.19_1_2386.d,7.3
+23_Sept_2023,Z23,veA1,wildtype,veA1_wildtype_TSA,veA1_wildtype_TSA.4,4,15,TSA,pyro U2,Liv,AG,C..Users.smahesula.Documents.Dr..Kumar.Raw.Data.78_36_GK_Z23_Aspergillus_Slot2.21_1_2388.d,7.4

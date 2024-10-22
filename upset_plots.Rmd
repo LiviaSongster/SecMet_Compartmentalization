@@ -1,0 +1,1338 @@
+---
+title: "RNAseq_plots"
+author: "Livia Songster"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## 1. import packages
+
+```{r packages, message=FALSE,results='hide'}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(readr)
+library("pheatmap")
+library("RColorBrewer")
+library(rmarkdown)
+library(UpSetR)
+library(ggdendro)
+```
+
+## import data
+
+```{r}
+dir <- getwd()
+dir
+subDir <- paste0(dir,"/Output_2024-07-23_all")
+subDir
+go_results_dir <- paste0(subDir,"/GO_results")
+dir.create(go_results_dir, showWarnings = FALSE)
+
+# import data with DESeq2 results
+deg_data <- read.csv(paste0(subDir,"/Merged_allmutants_ctrl_results.csv"))
+
+# keep only KO comparisons first
+pxda <- deg_data[,c("ID",
+                  "symbol",
+                  "description",
+                  "baseMean",
+                  "veA_pxdA_L2FC",
+                  "veA_pxdA_padj")]
+colnames(pxda)[5:6] <- c("L2FC","padj")
+
+hooka <- deg_data[,c("ID",
+                  "symbol",
+                  "description",
+                  "baseMean",
+                  "veA_hookA_L2FC",
+                  "veA_hookA_padj")]
+colnames(hooka)[5:6] <- c("L2FC","padj")
+
+pxda1 <- deg_data[,c("ID",
+                  "symbol",
+                  "description",
+                  "baseMean",
+                  "veA1_pxdA_L2FC",
+                  "veA1_pxdA_padj")]
+colnames(pxda1)[5:6] <- c("L2FC","padj")
+
+hooka1 <- deg_data[,c("ID",
+                  "symbol",
+                  "description",
+                  "baseMean",
+                  "veA1_hookA_L2FC",
+                  "veA1_hookA_padj")]
+colnames(hooka1)[5:6] <- c("L2FC","padj")
+
+
+# function for finding DEGs
+genes_of_interest <- function(data, pval=0.05, foldchange=0.5) {
+  data[1:nrow(data), 5:6] <- lapply(5:ncol(data), function(x) as.numeric(data[[x]]))
+  goi_list = subset(data, data$padj < pval)
+  goi_list = subset(goi_list, abs(goi_list$L2FC) > foldchange)
+  print(paste0("There were ",nrow(goi_list)," genes of interest in the dataset."))
+  return(goi_list)
+}  
+
+# run on pxda and hooka vs wt
+pxda_goi <- genes_of_interest(data=pxda, pval=0.05, foldchange=1)
+hooka_goi <- genes_of_interest(data=hooka, pval=0.05, foldchange=1)
+pxda1_goi <- genes_of_interest(data=pxda1, pval=0.05, foldchange=1)
+hooka1_goi <- genes_of_interest(data=hooka1, pval=0.05, foldchange=1)
+
+# make new output dir
+dir.create(paste0(subDir,"/Venn_comparisons"), showWarnings = FALSE)
+
+# venn diagrams of overlapping genes
+# get venn diagram for pxdA rna and protein
+library(VennDiagram)
+library(RColorBrewer)
+venn.diagram(
+  x = list(pxda_goi$ID,
+           pxda1_goi$ID),
+  category.names = c("pxdA veA+" ,
+                     "pxdA veA1"),
+  filename = paste0(subDir,'/Venn_comparisons/veA_pxdA_wt_ctrl_rna_venn.png'),
+  output=TRUE,
+  col=c("#440154ff", '#21908dff'),
+  fill = c(alpha("#440154ff",0.3), alpha('#21908dff',0.3)),
+  # Circles
+  lwd = 1,
+  lty = 'blank',
+  
+  # Numbers
+  cex = 2,
+  fontface = "bold",
+  fontfamily = "sans",
+  ext.percent =c(0,0,0),
+
+  # Set names
+  cat.cex = 2,
+  cat.fontface = "bold",
+  cat.pos = 4,
+  cat.fontfamily = "sans",
+  cat.just=list(c(1,1) , c(0.5,1))
+)
+
+# get genes in the intersection
+overlap <- intersect(pxda_goi$ID,
+                     pxda1_goi$ID)
+
+```
+
+```{r upset}
+
+# separate by up and down
+pxda_goi_u <- subset(pxda_goi, L2FC > 0)
+pxda_goi_d <- subset(pxda_goi, L2FC < 0)
+
+pxda1_goi_u <- subset(pxda1_goi, L2FC > 0)
+pxda1_goi_d <- subset(pxda1_goi, L2FC < 0)
+
+hooka_goi_u <- subset(hooka_goi, L2FC > 0)
+hooka_goi_d <- subset(hooka_goi, L2FC < 0)
+
+hooka1_goi_u <- subset(hooka1_goi, L2FC > 0)
+hooka1_goi_d <- subset(hooka1_goi, L2FC < 0)
+
+input_up <- list(pxda_goi_u$ID,
+              pxda1_goi_u$ID,
+              hooka_goi_u$ID,
+              hooka1_goi_u$ID)
+
+# name them
+names(input_up) <- c("veA, pxdA-KO, up",
+                  "veA1, pxdA-KO, up",
+                  "veA, hookA-KO, up",
+                  "veA1, hookA-KO, up")
+
+input_down <- list(pxda_goi_d$ID,
+              pxda1_goi_d$ID,
+              hooka_goi_d$ID,
+              hooka1_goi_d$ID)
+
+# name them
+names(input_down) <- c("veA, pxdA-KO, down",
+                  "veA1, pxdA-KO, down",
+                  "veA, hookA-KO, down",
+                  "veA1, hookA-KO, down")
+
+# get full list of all upreg genes
+up <- as.data.frame(unique(unlist(input_up)))
+colnames(up)[1] <- "ID"
+up$change <- "up"
+
+dn <- as.data.frame(unique(unlist(input_down)))
+colnames(dn)[1] <- "ID"
+dn$change <- "down"
+
+# add columns for each category
+up[,3:6] <- 0
+dn[,3:6] <- 0
+
+# now add a 1 if that gene is in the list for each category
+
+for (n in 3:ncol(up)) {
+  up[, n] <- ifelse(up$ID %in% input_up[[n-2]], 1, up[, n])
+  dn[, n] <- ifelse(dn$ID %in% input_down[[n-2]], 1, dn[, n])
+}
+
+
+# bind up and down genes together
+# we will color by up and down regulated
+data <- rbind(up,dn)
+  
+genotypes <- c("veA, pxdA-KO",
+                 "veA1, pxdA-KO",
+                 "veA, hookA-KO",
+                 "veA1, hookA-KO")
+colnames(data)[3:6] <-  genotypes
+
+
+# set order
+data$change <- factor(data$change, levels = c("up", "down"))
+
+
+```
+Custom upsetplot function
+```{r}
+# make a function for my nice upset plot preferences
+
+custom_upset <- function (data_frame, genotypes_to_plot, ylim_max=2500, name) {
+  # try complex upset so I can add colors
+  # https://krassowski.github.io/complex-upset/articles/Examples_R.html
+  library(ComplexUpset)
+  # name is for filename output
+  upset(data_frame, genotypes_to_plot,
+      mode = "exclusive_intersection",
+      base_annotations = list('# Genes in Intersection' = intersection_size(counts=TRUE,
+                                                                            mapping=aes(fill=change),
+                                                                            text_mapping=aes(colour = 'on_background'),
+                                                                            text_colors=c(on_background='black', on_bar='black')
+                                                                            ) +
+                                scale_fill_manual(values=c('up'='#B33951',
+                                                           'down'='#377EB8'
+                                                           )
+                                                  ) +
+                                ylim(c(0, ylim_max)) +
+                                theme_bw()
+                              ),
+      height_ratio=0.4,
+      width_ratio=0.25,
+      min_degree=1,
+      set_sizes=(
+        upset_set_size()
+        + geom_text(aes(label=..count..), hjust=1.1, stat='count')
+        + theme(axis.text.x=element_text(angle=90))
+        + ylab('# DEGs')
+      ),
+    stripes=NA
+)
+
+ggsave(paste0(subDir,'/Venn_comparisons/upset_',name,'.wmf'),
+       bg="transparent",
+       dpi="print",
+       units = "in",
+       width = 5,
+       height = 5,
+       )
+print(paste0("Saved upset plot for ",name))
+}
+
+```
+Upset plots for mutants vs controls
+
+```{r plot_upsets_ctrl_condition}
+
+# generate plots
+# all comparisons
+custom_upset(data_frame = data,
+             genotypes_to_plot = genotypes,
+             name = "vea_vea1_pxda_hook_vs_wt")
+
+
+# now only plot veA on this graph
+data_v <- data[,c(1:3,5)]
+# save colnames
+genotypes_v <- colnames(data_v[3:4])
+
+custom_upset(data_frame = data_v,
+             genotypes_to_plot = genotypes_v,
+             name = "vea_pxda_hook_vs_wt")
+
+
+# now only plot veA1 on this graph
+data_v1 <- data[,c(1:2,4,6)]
+genotypes_v1 <- colnames(data_v1[3:4])
+
+custom_upset(data_frame = data_v1,
+             genotypes_to_plot = genotypes_v1,
+             name = "vea1_pxda_hook_vs_wt")
+
+
+```
+Now do upsets for each condition, TSA vs control for each mutant
+
+```{r tsavsctrl_condition_vea}
+# import data with DESeq2 results
+deg_data2 <- read.csv(paste0(subDir,"/Merged_veA_TSA_results.csv"))
+
+# subset into individual dataframes
+entry2 <- deg_data2[,c("ID",
+                  "symbol",
+                  "description",
+                  "baseMean",
+                  "entry_L2FC",
+                  "entry_padj")]
+colnames(entry2)[5:6] <- c("L2FC","padj")
+
+wt2 <- deg_data2[,c("ID",
+                  "symbol",
+                  "description",
+                  "baseMean",
+                  "wt_L2FC",
+                  "wt_padj")]
+colnames(wt2)[5:6] <- c("L2FC","padj")
+
+pxda2 <- deg_data2[,c("ID",
+                  "symbol",
+                  "description",
+                  "baseMean",
+                  "pxdA_L2FC",
+                  "pxdA_padj")]
+colnames(pxda2)[5:6] <- c("L2FC","padj")
+
+hooka2 <- deg_data2[,c("ID",
+                  "symbol",
+                  "description",
+                  "baseMean",
+                  "hookA_L2FC",
+                  "hookA_padj")]
+colnames(hooka2)[5:6] <- c("L2FC","padj")
+
+# find genes of interest
+wt_goi2 <- genes_of_interest(data=wt2, pval=0.05, foldchange=1)
+entry_goi2 <- genes_of_interest(data=entry2, pval=0.05, foldchange=1)
+pxda_goi2 <- genes_of_interest(data=pxda2, pval=0.05, foldchange=1)
+hooka_goi2 <- genes_of_interest(data=hooka2, pval=0.05, foldchange=1)
+
+# separate by up and down
+wt_goi_u <- subset(wt_goi2, L2FC > 0)
+wt_goi_d <- subset(wt_goi2, L2FC < 0)
+
+entry_goi_u <- subset(entry_goi2, L2FC > 0)
+entry_goi_d <- subset(entry_goi2, L2FC < 0)
+
+pxda_goi_u <- subset(pxda_goi2, L2FC > 0)
+pxda_goi_d <- subset(pxda_goi2, L2FC < 0)
+
+hooka_goi_u <- subset(hooka_goi2, L2FC > 0)
+hooka_goi_d <- subset(hooka_goi2, L2FC < 0)
+# compile the lists into one df
+input_up <- list(entry_goi_u$ID,
+              wt_goi_u$ID,
+              pxda_goi_u$ID,
+              hooka_goi_u$ID)
+
+# name them
+names(input_up) <- c("veA, entry, up TSA/ctrl",
+                  "veA, wt, up TSA/ctrl",
+                  "veA, pxdA-KO, up TSA/ctrl",
+                  "veA, hookA-KO, up TSA/ctrl")
+
+input_down <- list(entry_goi_d$ID,
+              wt_goi_d$ID,
+              pxda_goi_d$ID,
+              hooka_goi_d$ID)
+
+# name them
+names(input_down) <- c("veA, entry, down TSA/ctrl",
+                  "veA, wt, down TSA/ctrl",
+                  "veA, pxdA-KO, down TSA/ctrl",
+                  "veA, hookA-KO, down TSA/ctrl")
+
+# generate matrix of unique geneIDs for each comparison
+up <- as.data.frame(unique(unlist(input_up)))
+colnames(up)[1] <- "ID"
+up$change <- "up"
+
+dn <- as.data.frame(unique(unlist(input_down)))
+colnames(dn)[1] <- "ID"
+dn$change <- "down"
+
+# add columns for each category
+up[,3:6] <- 0
+dn[,3:6] <- 0
+
+# now add a 1 if that gene is in the list for each category
+
+for (n in 3:ncol(up)) {
+  up[, n] <- ifelse(up$ID %in% input_up[[n-2]], 1, up[, n])
+  dn[, n] <- ifelse(dn$ID %in% input_down[[n-2]], 1, dn[, n])
+}
+
+
+# bind up and down genes together
+# we will color by up and down regulated
+data2 <- rbind(up,dn)
+  
+genotypes2 <- c("veA, entry, TSA/ctrl",
+                  "veA, wt, TSA/ctrl",
+                  "veA, pxdA-KO, TSA/ctrl",
+                  "veA, hookA-KO, TSA/ctrl")
+colnames(data2)[3:6] <-  genotypes2
+
+# set order
+data2$change <- factor(data2$change, levels = c("up", "down"))
+
+```
+
+```{r upsets_tsa_vs_ctrl_vea}
+
+# generate plots
+# all comparisons
+custom_upset(data_frame = data2,
+             genotypes_to_plot = genotypes2,
+             name = "vea_tsa_vs_ctrl")
+
+
+# now only plot wild types and entry on this graph
+data_we <- data2[,c(1:4)]
+# save colnames
+genotypes_we <- colnames(data_we[3:4])
+
+custom_upset(data_frame = data_we,
+             genotypes_to_plot = genotypes_we,
+             name = "vea_tsa_vs_ctrl_wts_only")
+
+
+# now only plot wt and kos on this graph
+data_wph <- data2[,c(1:2,4:6)]
+genotypes_wph <- colnames(data_wph[3:5])
+
+custom_upset(data_frame = data_wph,
+             genotypes_to_plot = genotypes_wph,
+             name = "vea_tsa_vs_ctrl_wph")
+
+```
+Also generate upsets for TSA vs ctrl for veA1 strains
+
+```{r tsavsctrl_condition_vea1}
+# import data with DESeq2 results
+deg_data3 <- read.csv(paste0(subDir,"/Merged_veA1_TSA_results.csv"))
+
+# subset into individual dataframes
+wt3 <- deg_data3[,c("ID",
+                  "symbol",
+                  "description",
+                  "baseMean",
+                  "wt_L2FC",
+                  "wt_padj")]
+colnames(wt3)[5:6] <- c("L2FC","padj")
+
+pxda3 <- deg_data3[,c("ID",
+                  "symbol",
+                  "description",
+                  "baseMean",
+                  "pxdA_L2FC",
+                  "pxdA_padj")]
+colnames(pxda3)[5:6] <- c("L2FC","padj")
+
+hooka3 <- deg_data3[,c("ID",
+                  "symbol",
+                  "description",
+                  "baseMean",
+                  "hookA_L2FC",
+                  "hookA_padj")]
+colnames(hooka3)[5:6] <- c("L2FC","padj")
+
+# find genes of interest
+wt_goi3 <- genes_of_interest(data=wt3, pval=0.05, foldchange=1)
+pxda_goi3 <- genes_of_interest(data=pxda3, pval=0.05, foldchange=1)
+hooka_goi3 <- genes_of_interest(data=hooka3, pval=0.05, foldchange=1)
+
+# separate by up and down
+wt_goi_u <- subset(wt_goi3, L2FC > 0)
+wt_goi_d <- subset(wt_goi3, L2FC < 0)
+
+pxda_goi_u <- subset(pxda_goi3, L2FC > 0)
+pxda_goi_d <- subset(pxda_goi3, L2FC < 0)
+
+hooka_goi_u <- subset(hooka_goi3, L2FC > 0)
+hooka_goi_d <- subset(hooka_goi3, L2FC < 0)
+# compile the lists into one df
+input_up <- list(wt_goi_u$ID,
+              pxda_goi_u$ID,
+              hooka_goi_u$ID)
+
+# name them
+names(input_up) <- c("veA1, wt, up TSA/ctrl",
+                  "veA1, pxdA-KO, up TSA/ctrl",
+                  "veA1, hookA-KO, up TSA/ctrl")
+
+input_down <- list(wt_goi_d$ID,
+              pxda_goi_d$ID,
+              hooka_goi_d$ID)
+
+# name them
+names(input_down) <- c("veA1, wt, down TSA/ctrl",
+                  "veA1, pxdA-KO, down TSA/ctrl",
+                  "veA1, hookA-KO, down TSA/ctrl")
+
+# generate matrix of unique geneIDs for each comparison
+up <- as.data.frame(unique(unlist(input_up)))
+colnames(up)[1] <- "ID"
+up$change <- "up"
+
+dn <- as.data.frame(unique(unlist(input_down)))
+colnames(dn)[1] <- "ID"
+dn$change <- "down"
+
+# add columns for each category
+up[,3:5] <- 0
+dn[,3:5] <- 0
+
+# now add a 1 if that gene is in the list for each category
+
+for (n in 3:ncol(up)) {
+  up[, n] <- ifelse(up$ID %in% input_up[[n-2]], 1, up[, n])
+  dn[, n] <- ifelse(dn$ID %in% input_down[[n-2]], 1, dn[, n])
+}
+
+
+# bind up and down genes together
+# we will color by up and down regulated
+data3 <- rbind(up,dn)
+  
+genotypes3 <- c("veA1, wt, TSA/ctrl",
+                  "veA1, pxdA-KO, TSA/ctrl",
+                  "veA1, hookA-KO, TSA/ctrl")
+
+colnames(data3)[3:5] <-  genotypes3
+
+# set order
+data3$change <- factor(data3$change, levels = c("up", "down"))
+
+```
+
+```{r upsets_tsa_vs_ctrl_vea1}
+
+# generate plots for vea1
+# all comparisons
+custom_upset(data_frame = data3,
+             genotypes_to_plot = genotypes3,
+             name = "vea1_tsa_vs_ctrl_wph")
+
+```
+
+
+
+Prepare for GO term enrichment analysis, using Goseq
+
+```{r,message = FALSE}
+# load necessary packages
+# BiocManager::install("rrvgo")
+library(pathview)
+library("AnnotationDbi")
+library(clusterProfiler)
+library(largeList)
+library(goseq)
+library(scales)
+library(org.Anidulans.FGSCA4.eg.db)
+library(rrvgo)
+```
+
+first prepare go list and remove duplicate genes
+
+```{r import_genelist_pruning}
+# import full list of Anid genes
+complete_genes <- read.csv("Anidulans_genome_files/Anidulans-65_complete_gene_list.csv")
+
+# subset complete_genes to only include genes that were detected in the rnaseq experiment
+keep <- hooka$ID
+complete_genes <- subset(complete_genes, gene %in% keep)
+
+# Find entries in keep that are missing in complete_genes$ID
+missing_entries <- keep[!(keep %in% complete_genes$gene)]
+
+# Print the missing entries
+print(missing_entries)
+
+
+# import GO annotation of aspergillus
+GOmap <- readList(file = "Anidulans_genome_files/Anidulans-65_GOmap.llo")
+lengthData <- read.csv("Anidulans_genome_files/Anidulans-65_genelengths.csv")
+
+# subset length data to data length
+lengthData <- subset(lengthData, gene %in% keep)
+
+# export counts so I can generate a histogram of # GO terms per gene lengths
+numbertermspergene <- sapply(GOmap, length)
+
+write.csv(numbertermspergene,paste0(subDir,"/numbergoterms_pergene.csv"))
+```
+
+Write a function to run go analysis
+
+```{r, find_go_terms,fig.align="center", fig.height = 8}
+
+
+
+run_go <- function(name,gene_list) {
+  # # name will be used for plot names and saving outputs
+  # name = "test"
+  # # gene list is the list of genes for GO enrichment
+  # gene_list <- hooka_goi$ID
+  
+  # keep contains the entire list of all genes detected in the RNAseq experiment
+  all_genes <- as.data.frame(cbind(keep,"0"))
+  # isSigGene column will indicate if the gene is in the module of interest
+  colnames(all_genes) <- c("gene","isSigGene")
+  
+  # populate a 1 into isSigGene if all_genes$gene is in gene_list
+  all_genes$isSigGene <- ifelse(all_genes$gene %in% gene_list, 1, all_genes$isSigGene)
+  
+  # format object for goseq function
+  genes <- as.integer(all_genes$isSigGene) # converts boolean to 1 or 0
+  names(genes) <- keep
+  
+  head(genes)
+  # calculate PWF - normalize go enrichment for gene length
+  
+  pwf=nullp(genes,bias.data=lengthData$length)
+  
+  # map go terms without accounting for length bias
+  goResults2 = goseq(pwf,gene2cat=GOmap,method="Hypergeometric")
+  
+  # map terms while accounting for gene length bias, only look at BP
+  goResults = goseq(pwf,gene2cat=GOmap,use_genes_without_cat=TRUE)
+
+  # remove non-BP results
+  goResults <- subset(goResults, ontology == "BP")
+  
+  # correct p values for FDR
+  goResults$BH_padj = p.adjust(goResults$over_represented_pvalue, method = "BH")
+  
+  # export results
+  write.csv(goResults,file.path(go_results_dir, paste0("GO_results_BP_",name,".csv")),row.names=FALSE)
+  
+  head(goResults, n= 10) # peak
+  
+  # subset to only include biological processes / BP
+  # and only the significant hits at padj < 0.1
+  
+  goResults_BP <- subset(goResults, ontology == "BP" & BH_padj < 0.1)
+  
+  if (nrow(goResults_BP) != 0) {
+    
+    head(goResults_BP, n = 10) # peak
+    
+    # sort results by % hits
+    goResults_BP$hitsPerc <- goResults_BP$numDEInCat * 100 / goResults_BP$numInCat
+    goResults_BP$term <- factor(goResults_BP$term, levels = goResults_BP$term[order(goResults_BP$hitsPerc)])
+
+    
+    # plot top 15 results
+    goResults_BP %>% 
+      top_n(15, wt=-BH_padj) %>% # identify top 15 by adjusted p value
+      ggplot(aes(x=hitsPerc, 
+                 y=term, 
+                 colour=BH_padj, 
+                 size=numDEInCat)) +
+      geom_point() +
+      expand_limits(x=0) +
+      labs(x="% DE in term", y="GO term", colour="FDR p val", size="# genes in term", title = paste0(name," Biological Processes")) +
+      theme(axis.text = element_text(size = 5)) +
+      theme_bw() +
+      scale_y_discrete(labels = label_wrap(50))
+    
+    # estimate height of graph based on number of terms
+    h_est = nrow(goResults_BP)*.3+2
+    if(h_est>6.5) {
+      h_est=6.5
+    }
+    # ggsave it
+    ggsave(filename = file.path(go_results_dir, paste0(name,"_biological_processes_graph",".png")),
+           plot = last_plot(),
+           width = 6,
+           height = h_est,
+           units = "in",
+           dpi = 300)
+    # ggsave it
+    ggsave(filename = file.path(go_results_dir, paste0(name,"_biological_processes_graph",".wmf")),
+           plot = last_plot(),
+           width = 6,
+           height = h_est,
+           units = "in",
+           dpi = 300)
+  
+  }
+  
+}
+
+# now run function on all comparisons of interest
+
+# first generate list of names
+name_list <- c("hookA_vs_wt_ctrl_veA",
+               "hookA_vs_wt_ctrl_veA1",
+               "pxdA_vs_wt_ctrl_veA",
+               "pxdA_vs_wt_ctrl_veA1",
+               
+               # now tsa vs control for all conditions
+               "TSA_vs_ctrl_veA_entry",
+               "TSA_vs_ctrl_veA_wt",
+               "TSA_vs_ctrl_veA_pxdA",
+               "TSA_vs_ctrl_veA_hookA",
+               
+               "TSA_vs_ctrl_veA1_wt",
+               "TSA_vs_ctrl_veA1_pxdA",
+               "TSA_vs_ctrl_veA1_hookA"
+               )
+
+gene_list <- list(hooka_goi$ID,
+                  hooka1_goi$ID,
+                  pxda_goi$ID,
+                  pxda1_goi$ID,
+                  
+                  entry_goi2$ID,
+                  wt_goi2$ID,
+                  pxda_goi2$ID,
+                  hooka_goi2$ID,
+                  
+                  wt_goi3$ID,
+                  pxda_goi3$ID,
+                  hooka_goi3$ID
+                  
+               )
+for(i in 1:length(name_list)) {
+  
+  # make a plot and export results
+  run_go(name = name_list[i],
+         gene_list = gene_list[[i]])
+  
+  }
+
+
+```
+Generate nice GO graphs with rrvgo
+```{r rrvgo_graphs}
+# anidulans org.Anidulans.FGSCA4.eg.db
+# get anidulans .db from https://github.com/lakhanp1/fungal_resources
+# you can achieve this using the next two commented lines:
+# library(remotes)
+# remotes::install_github("lakhanp1/fungal_resources/A_nidulans/org.Anidulans.FGSCA4.eg.db")
+
+plot_rrvgo <- function(name, threshold,ontology=c("BP","MF","CC")) {
+  # # name will be used for plot names and saving outputs
+  # name = "hookA_vs_wt_ctrl_veA"
+  # ontology ="BP"
+  # threshold = 0.8
+  
+  # read in goResults from goseq
+  # goResults <- read.csv(file.path(go_results_dir, paste0("GO_results_allontologies_",name,".csv")))
+  goResults <- read.csv(file.path(go_results_dir, paste0("GO_results_BP_",name,".csv")))
+  # specify which ontology you want to look at
+  # pick only one
+  
+  if (ontology =="MF") {
+    goResults2 <- subset(goResults, ontology == "MF" & over_represented_pvalue < 0.05)
+  } else if (ontology =="BP") {
+    goResults2 <- subset(goResults, ontology == "BP" & over_represented_pvalue < 0.05)
+  } else if (ontology =="CC") {
+    goResults2 <- subset(goResults, ontology == "CC" & over_represented_pvalue < 0.05)
+  }
+  # only proceed if there are more than 4 entries for go terms
+  if (nrow(goResults2)>4) {
+    
+    go_terms <- goResults2$category
+    p_values <- goResults2$BH_padj
+    # calculate similarity between go terms
+    simMatrix <- calculateSimMatrix(
+      go_terms,
+      orgdb = "org.Anidulans.FGSCA4.eg.db",
+      ont = ontology,
+      method = "Rel",
+      keytype = "ASPGD_ID")
+    
+    scores <- setNames(-log10(p_values), go_terms)
+    
+    # reduce the matrix
+    reducedTerms <- reduceSimMatrix(
+      simMatrix,
+      scores,
+      threshold = threshold,
+      orgdb = "org.Anidulans.FGSCA4.eg.db",
+      keytype = "ASPGD_ID")
+    scatterPlot(simMatrix, reducedTerms)
+    return(reducedTerms)
+  } else {
+    return(NULL)
+  }
+}
+
+pdf(file = file.path(go_results_dir, "RRVGO_treemap_plots.pdf"), wi = 9, he = 6)
+
+
+# now run on list
+for(i in 1:length(name_list)) {
+  name = name_list[i]
+  # make a rrvgo plot
+  results <- plot_rrvgo(name,0.7,ontology="BP")
+  
+  # if any scores are listed as Inf, replace with 10
+  results$score[is.infinite(results$score)] <- 10
+  
+  if (length(results) > 2) {
+    print(paste0("Treemap of Bio Processes for ",name))
+    
+    treemapPlot(results,title=paste0("Treemap of Bio Processes for ",name))
+    
+    write.csv(results,paste0(go_results_dir,"/rrvgo_results_",name,"_BP.csv"))
+  } else {
+    print(paste0("RRVGO failed for Bio Processes for ",name))
+    
+  }
+  
+  
+}
+dev.off()
+
+
+
+```
+
+
+Now summarize the rrvgo simplified results
+```{r summarize_rrvgo_results_plots}
+
+# write a function to summarize the rrvgo results for a specific condition
+summarize_rrvgo <- function(data) {
+  # data = read.csv(paste0(go_results_dir,"/rrvgo_results_hookA_vs_wt_ctrl_veA_BP.csv"))
+  
+  # get average score, size, for each parent term
+  summary_stats <- data %>%
+  group_by(parentTerm) %>%
+  summarise(
+    avg_score = mean(score),
+    sum_score = sum(score),
+
+    avg_size = mean(size),
+    sum_size = sum(size),
+    unique_go_count = n_distinct(go),
+    go_values = paste(unique(go), collapse = ", "),
+    parent = paste(unique(parent), collapse = ", ")
+  )
+  
+  # return this summary file
+  return(summary_stats)
+}
+
+# now run on all rrvgo results and merge together the results
+
+# print name list
+name_list
+
+# merge results for veA hooka vs pxda
+
+temp_hook = read.csv(paste0(go_results_dir,"/rrvgo_results_",name_list[1],"_BP.csv"))
+res_hook <- summarize_rrvgo(temp_hook)
+
+temp_pxda = read.csv(paste0(go_results_dir,"/rrvgo_results_",name_list[3],"_BP.csv"))
+res_pxda <- summarize_rrvgo(temp_pxda)
+
+# merge them & keep shared terms
+vea_res_shared <- merge(res_pxda,res_hook,by="parent")
+# keep all terms
+vea_res <- merge(res_pxda,res_hook,by="parent",all=TRUE)
+
+# merge results for veA1 hooka vs pxda
+
+temp_hook1 = read.csv(paste0(go_results_dir,"/rrvgo_results_",name_list[2],"_BP.csv"))
+res_hook1 <- summarize_rrvgo(temp_hook1)
+
+temp_pxda1 = read.csv(paste0(go_results_dir,"/rrvgo_results_",name_list[4],"_BP.csv"))
+res_pxda1 <- summarize_rrvgo(temp_pxda1)
+
+# merge them & keep shared terms
+vea1_res_shared <- merge(res_pxda1,res_hook1,by="parent")
+# keep all terms
+vea1_res <- merge(res_pxda1,res_hook1,by="parent",all=TRUE)
+
+
+# now for TSA vea
+temp_entry2 = read.csv(paste0(go_results_dir,"/rrvgo_results_",name_list[5],"_BP.csv"))
+res_entry2 <- summarize_rrvgo(temp_entry2)
+
+temp_wt2 = read.csv(paste0(go_results_dir,"/rrvgo_results_",name_list[6],"_BP.csv"))
+res_wt2 <- summarize_rrvgo(temp_wt2)
+
+temp_pxda2 = read.csv(paste0(go_results_dir,"/rrvgo_results_",name_list[7],"_BP.csv"))
+res_pxda2 <- summarize_rrvgo(temp_pxda2)
+
+temp_hook2 = read.csv(paste0(go_results_dir,"/rrvgo_results_",name_list[8],"_BP.csv"))
+res_hook2 <- summarize_rrvgo(temp_hook2)
+
+
+
+# merge them & keep all terms
+tsa_vea_res <- merge(res_entry2,res_wt2,by="parent",all=TRUE)
+tsa_vea_res <- merge(tsa_vea_res,res_pxda2,by="parent",all=TRUE)
+tsa_vea_res <- merge(tsa_vea_res,res_hook2,by="parent",all=TRUE)
+
+# FINALLY - TSA veA1
+temp_wt3 = read.csv(paste0(go_results_dir,"/rrvgo_results_",name_list[9],"_BP.csv"))
+res_wt3 <- summarize_rrvgo(temp_wt3)
+
+# temp_pxda3 = read.csv(paste0(go_results_dir,"/rrvgo_results_",name_list[10],"_BP.csv"))
+# res_pxda3 <- summarize_rrvgo(temp_pxda3)
+
+temp_hook3 = read.csv(paste0(go_results_dir,"/rrvgo_results_",name_list[11],"_BP.csv"))
+res_hook3 <- summarize_rrvgo(temp_hook3)
+
+# merge tsa veA1
+tsa_vea1_res <- merge(res_wt3,res_hook3,by="parent",all=TRUE)
+tsa_vea1_res_shared <- merge(res_wt3,res_hook3,by="parent")
+
+
+# save output
+# write.csv(vea_res, paste0(go_results_dir,"/rrvgo_summary_","vea_res",".csv"),row.names=FALSE)
+# write.csv(vea1_res, paste0(go_results_dir,"/rrvgo_summary_","vea1_res",".csv"),row.names=FALSE)
+# write.csv(tsa_vea_res, paste0(go_results_dir,"/rrvgo_summary_","tsa_vea_res",".csv"),row.names=FALSE)
+# write.csv(tsa_vea1_res, paste0(go_results_dir,"/rrvgo_results_","tsa_vea1_res",".csv"),row.names=FALSE)
+
+
+###########################################
+###########################################
+
+# also pull out the summed score for go terms in that category for each one
+mini_res_pxda <- res_pxda[,c("parentTerm",
+                            "sum_score")]
+
+# remove rows with a sum_score of 0
+mini_res_pxda <- subset(mini_res_pxda, sum_score > 0)
+
+
+mini_res_hooka <- res_hook[,c("parentTerm",
+                            "sum_score")]
+mini_res_hooka <- subset(mini_res_hooka, sum_score > 0)
+
+
+# merge together
+vea_res_mini <- merge(mini_res_pxda,mini_res_hooka,by="parentTerm",all=TRUE)
+colnames(vea_res_mini)[2:3] <- c("pxda",
+                                 "hooka")
+# replace NA with 0
+vea_res_mini[is.na(vea_res_mini)] <- 0
+
+# sort df
+library(dplyr)
+matrix <- as.matrix(vea_res_mini[,c(2:ncol(vea_res_mini))])
+rownames(matrix) <- vea_res_mini$parentTerm
+
+# Create dendro
+dendro <- as.dendrogram(hclust(d = dist(x = matrix)))
+    
+dendro_plot <- ggdendrogram(data = dendro, rotate = TRUE)
+    
+# Preview the plot
+print(dendro_plot)
+
+# get order  
+gene_order <- order.dendrogram(dendro)
+    
+# reorder dataframe
+vea_res_mini$parentTerm <- factor(x = vea_res_mini$parentTerm,
+                            levels = vea_res_mini$parentTerm[gene_order], 
+                            ordered = TRUE)
+
+# sort df into this order
+vea_res_mini <- vea_res_mini %>%
+  arrange(parentTerm)
+
+# Convert from wide to long format
+vea_res_long <- vea_res_mini %>%
+  pivot_longer(
+    cols = 2:3,  # Specify columns to pivot
+    names_to = "Genotype",                                # Name for the new key column
+    values_to = "Count"                                # Name for the new value column
+  )
+
+
+
+# replace 0 counts with NA
+vea_res_long$Count[vea_res_long$Count == 0] <- NA
+
+# plot using ggplot
+ggplot(vea_res_long, aes(x = Genotype, y = parentTerm, size = Count)) +
+  geom_point()
+
+#################################
+# repeat for next comparison
+mini_res_pxda <- res_pxda1[,c("parentTerm",
+                            "sum_score")]
+
+mini_res_hooka <- res_hook1[,c("parentTerm",
+                            "sum_score")]
+mini_res_pxda <- subset(mini_res_pxda, sum_score > 0)
+mini_res_hooka <- subset(mini_res_hooka, sum_score > 0)
+
+# merge together
+vea1_res_mini <- merge(mini_res_pxda,mini_res_hooka,by="parentTerm",all=TRUE)
+colnames(vea1_res_mini)[2:3] <- c("pxda",
+                                 "hooka")
+# replace NA with 0
+vea1_res_mini[is.na(vea1_res_mini)] <- 0
+
+# sort df
+library(dplyr)
+matrix <- as.matrix(vea1_res_mini[,c(2:ncol(vea1_res_mini))])
+rownames(matrix) <- vea1_res_mini$parentTerm
+
+# Create dendro
+dendro <- as.dendrogram(hclust(d = dist(x = matrix)))
+    
+dendro_plot <- ggdendrogram(data = dendro, rotate = TRUE)
+    
+# Preview the plot
+print(dendro_plot)
+
+# get order  
+gene_order <- order.dendrogram(dendro)
+    
+# reorder dataframe
+vea1_res_mini$parentTerm <- factor(x = vea1_res_mini$parentTerm,
+                            levels = vea1_res_mini$parentTerm[gene_order], 
+                            ordered = TRUE)
+
+# sort df into this order
+vea1_res_mini <- vea1_res_mini %>%
+  arrange(parentTerm)
+
+# Convert from wide to long format
+vea1_res_long <- vea1_res_mini %>%
+  pivot_longer(
+    cols = starts_with("pxda") | starts_with("hooka"),  # Specify columns to pivot
+    names_to = "Genotype",                                # Name for the new key column
+    values_to = "Count"                                # Name for the new value column
+  )
+
+
+
+# replace 0 counts with NA
+vea1_res_long$Count[vea1_res_long$Count == 0] <- NA
+
+# plot using ggplot
+ggplot(vea1_res_long, aes(x = Genotype, y = parentTerm, size = Count)) +
+  geom_point()
+
+
+#################### repeat for TSA
+mini_res_entry <- res_entry2[,c("parentTerm",
+                            "sum_score")]
+
+mini_res_wt <- res_wt2[,c("parentTerm",
+                            "sum_score")]
+
+
+mini_res_pxda <- res_pxda2[,c("parentTerm",
+                            "sum_score")]
+
+mini_res_hooka <- res_hook2[,c("parentTerm",
+                            "sum_score")]
+
+mini_res_entry <- subset(mini_res_entry, sum_score > 0)
+mini_res_wt <- subset(mini_res_wt, sum_score > 0)
+mini_res_pxda <- subset(mini_res_pxda, sum_score > 0)
+mini_res_hooka <- subset(mini_res_hooka, sum_score > 0)
+
+# merge together
+tsa_vea_res_mini <- merge(mini_res_entry,mini_res_wt,by="parentTerm",all=TRUE)
+tsa_vea_res_mini <- merge(tsa_vea_res_mini,mini_res_pxda,by="parentTerm",all=TRUE)
+tsa_vea_res_mini <- merge(tsa_vea_res_mini,mini_res_hooka,by="parentTerm",all=TRUE)
+
+colnames(tsa_vea_res_mini)[2:5] <- c("entry",
+                                  "wt",
+                                  "pxda",
+                                 "hooka")
+# replace NA with 0
+tsa_vea_res_mini[is.na(tsa_vea_res_mini)] <- 0
+
+# sort df
+library(dplyr)
+matrix <- as.matrix(tsa_vea_res_mini[,c(2:ncol(tsa_vea_res_mini))])
+rownames(matrix) <- tsa_vea_res_mini$parentTerm
+
+# Create dendro
+dendro <- as.dendrogram(hclust(d = dist(x = matrix)))
+    
+dendro_plot <- ggdendrogram(data = dendro, rotate = TRUE)
+    
+# Preview the plot
+print(dendro_plot)
+
+# get order  
+gene_order <- order.dendrogram(dendro)
+    
+# reorder dataframe
+tsa_vea_res_mini$parentTerm <- factor(x = tsa_vea_res_mini$parentTerm,
+                            levels = tsa_vea_res_mini$parentTerm[gene_order], 
+                            ordered = TRUE)
+
+# sort df into this order
+tsa_vea_res_mini <- tsa_vea_res_mini %>%
+  arrange(parentTerm)
+
+# Convert from wide to long format
+tsa_vea_res_long <- tsa_vea_res_mini %>%
+  pivot_longer(
+    cols = 2:5,  # Specify columns to pivot
+    names_to = "Genotype",                                # Name for the new key column
+    values_to = "Count"                                # Name for the new value column
+  )
+
+
+
+# replace 0 counts with NA
+tsa_vea_res_long$Count[tsa_vea_res_long$Count == 0] <- NA
+
+# plot using ggplot
+ggplot(tsa_vea_res_long, aes(x = Genotype, y = parentTerm, size = Count)) +
+  geom_point()
+
+
+################## FINAL - tsa for vea1
+
+mini_res_wt <- res_wt3[,c("parentTerm",
+                            "sum_score")]
+
+
+mini_res_hooka <- res_hook3[,c("parentTerm",
+                            "sum_score")]
+mini_res_wt <- subset(mini_res_wt, sum_score > 0)
+mini_res_hooka <- subset(mini_res_hooka, sum_score > 0)
+# merge together
+tsa_vea1_res_mini <- merge(mini_res_wt,mini_res_hooka,by="parentTerm",all=TRUE)
+
+colnames(tsa_vea1_res_mini)[2:3] <- c("wt",
+                                 "hooka")
+# replace NA with 0
+tsa_vea1_res_mini[is.na(tsa_vea1_res_mini)] <- 0
+
+# sort df
+library(dplyr)
+matrix <- as.matrix(tsa_vea1_res_mini[,c(2:ncol(tsa_vea1_res_mini))])
+rownames(matrix) <- tsa_vea1_res_mini$parentTerm
+
+# Create dendro
+dendro <- as.dendrogram(hclust(d = dist(x = matrix)))
+    
+dendro_plot <- ggdendrogram(data = dendro, rotate = TRUE)
+    
+# Preview the plot
+print(dendro_plot)
+
+# get order  
+gene_order <- order.dendrogram(dendro)
+    
+# reorder dataframe
+tsa_vea1_res_mini$parentTerm <- factor(x = tsa_vea1_res_mini$parentTerm,
+                            levels = tsa_vea1_res_mini$parentTerm[gene_order], 
+                            ordered = TRUE)
+
+# sort df into this order
+tsa_vea1_res_mini <- tsa_vea1_res_mini %>%
+  arrange(parentTerm)
+
+# Convert from wide to long format
+tsa_vea1_res_long <- tsa_vea1_res_mini %>%
+  pivot_longer(
+    cols = 2:3,  # Specify columns to pivot
+    names_to = "Genotype",                                # Name for the new key column
+    values_to = "Count"                                # Name for the new value column
+  )
+
+
+
+# replace 0 counts with NA
+tsa_vea1_res_long$Count[tsa_vea1_res_long$Count == 0] <- NA
+
+# plot using ggplot
+ggplot(tsa_vea1_res_long, aes(x = Genotype, y = parentTerm, size = Count)) +
+  geom_point()
+
+
+# export to csv for plotting in prism
+write.csv(vea_res_mini, paste0(go_results_dir,"/rrvgo_summary_","vea_res",".csv"),row.names=FALSE)
+write.csv(vea1_res_mini, paste0(go_results_dir,"/rrvgo_summary_","vea1_res",".csv"),row.names=FALSE)
+write.csv(tsa_vea_res_mini, paste0(go_results_dir,"/rrvgo_summary_","tsa_vea_res",".csv"),row.names=FALSE)
+write.csv(tsa_vea1_res_mini, paste0(go_results_dir,"/rrvgo_summary_","tsa_vea1_res",".csv"),row.names=FALSE)
+```
+
+Now for Transcription Factors!
+
+```{r TF_comparisons_DE}
+# import list of transcription factors
+anti_dir <- paste0(dir,"/Anidulans_genome_files/Antismash_nocassis/")
+
+tfs <- read.csv(paste0(anti_dir,"../Etxebeste_2021_TF_list.csv"))
+
+# find goi that are TFs and plot # DEG for TFs 
+# start with veA, control, mut vs WT
+hooka_goi$type <- NA
+hooka_goi$type <- ifelse(hooka_goi$ID %in% tfs$old_locus_tags, "transcription factor", hooka_goi$type)
+
+pxda_goi$type <- NA
+pxda_goi$type <- ifelse(pxda_goi$ID %in% tfs$old_locus_tags, "transcription factor", pxda_goi$type)
+
+# now veA1, control, mut vs WT
+hooka1_goi$type <- NA
+hooka1_goi$type <- ifelse(hooka1_goi$ID %in% tfs$old_locus_tags, "transcription factor", hooka1_goi$type)
+
+pxda1_goi$type <- NA
+pxda1_goi$type <- ifelse(pxda1_goi$ID %in% tfs$old_locus_tags, "transcription factor", pxda1_goi$type)
+
+
+# now TSA vs control, veA+
+entry_goi2$type <- NA
+entry_goi2$type <- ifelse(entry_goi2$ID %in% tfs$old_locus_tags, "transcription factor", entry_goi2$type)
+
+wt_goi2$type <- NA
+wt_goi2$type <- ifelse(wt_goi2$ID %in% tfs$old_locus_tags, "transcription factor", wt_goi2$type)
+
+hooka_goi2$type <- NA
+hooka_goi2$type <- ifelse(hooka_goi2$ID %in% tfs$old_locus_tags, "transcription factor", hooka_goi2$type)
+
+pxda_goi2$type <- NA
+pxda_goi2$type <- ifelse(pxda_goi2$ID %in% tfs$old_locus_tags, "transcription factor", pxda_goi2$type)
+
+# finally TSA vs control, veA1
+wt_goi3$type <- NA
+wt_goi3$type <- ifelse(wt_goi3$ID %in% tfs$old_locus_tags, "transcription factor", wt_goi3$type)
+
+hooka_goi3$type <- NA
+hooka_goi3$type <- ifelse(hooka_goi3$ID %in% tfs$old_locus_tags, "transcription factor", hooka_goi3$type)
+
+pxda_goi3$type <- NA
+pxda_goi3$type <- ifelse(pxda_goi3$ID %in% tfs$old_locus_tags, "transcription factor", pxda_goi3$type)
+
+# separate by up and down
+# look at TFs that are up or down under TSA for WT
+wt_goi_u <- subset(wt_goi2, L2FC > 0 & type == "transcription factor")
+wt_goi_d <- subset(wt_goi2, L2FC < 0 & type == "transcription factor")
+
+# and also altered in veA when compared to WT, control condition
+pxda_goi_u <- subset(pxda_goi, L2FC > 0 & type == "transcription factor")
+pxda_goi_d <- subset(pxda_goi, L2FC < 0 & type == "transcription factor")
+
+hooka_goi_u <- subset(hooka_goi, L2FC > 0 & type == "transcription factor")
+hooka_goi_d <- subset(hooka_goi, L2FC < 0 & type == "transcription factor")
+
+# compile the lists into one df
+input_up <- list(wt_goi_u$ID,
+              pxda_goi_u$ID,
+              hooka_goi_u$ID)
+
+# name them
+names(input_up) <- c("veA, wt, up TSA/ctrl",
+                  "veA, pxdA-KO vs wt, up ctrl",
+                  "veA, hookA-KO vs wt, up ctrl")
+
+input_down <- list(wt_goi_d$ID,
+              pxda_goi_d$ID,
+              hooka_goi_d$ID)
+
+# name them
+names(input_down) <- c("veA, wt, down TSA/ctrl",
+                  "veA, pxdA-KO vs wt, down ctrl",
+                  "veA, hookA-KO vs wt, down ctrl")
+
+# generate matrix of unique geneIDs for each comparison
+up <- as.data.frame(unique(unlist(input_up)))
+colnames(up)[1] <- "ID"
+up$change <- "up"
+
+dn <- as.data.frame(unique(unlist(input_down)))
+colnames(dn)[1] <- "ID"
+dn$change <- "down"
+
+# add columns for each category
+up[,3:5] <- 0
+dn[,3:5] <- 0
+
+# now add a 1 if that gene is in the list for each category
+
+for (n in 3:ncol(up)) {
+  up[, n] <- ifelse(up$ID %in% input_up[[n-2]], 1, up[, n])
+  dn[, n] <- ifelse(dn$ID %in% input_down[[n-2]], 1, dn[, n])
+}
+
+
+# bind up and down genes together
+# we will color by up and down regulated
+data4 <- rbind(up,dn)
+
+# add col names
+genotypes4 <- c("veA, wt, TSA/ctrl",
+                  "veA, pxdA-KO vs wt, ctrl",
+                  "veA, hookA-KO vs wt, ctrl")
+
+colnames(data4)[3:5] <-  genotypes4
+
+# set order
+data4$change <- factor(data4$change, levels = c("up", "down"))
+
+```
+
+```{r upset_plot_TFS}
+
+# generate plot for TFs
+custom_upset(data_frame = data4,
+             genotypes_to_plot = genotypes4,
+             name = "TFs_upsetplot",
+             ylim_max = 125)
+
+
+# also do GO enrichment for TFs
+# first generate list of names
+name_list <- c("wt_TSA_TFs",
+               "pxdA_TFs",
+               "hookA_TFs",
+               "col1_upset_TFs",
+               "col2_upset_TFs"
+               )
+
+# get list of TFs from the first two columns of the TF upset plot
+col1_upset_TFs <- subset(data4,`veA, wt, TSA/ctrl` == 1 & `veA, pxdA-KO vs wt, ctrl` == 1 & `veA, hookA-KO vs wt, ctrl` == 1)
+col2_upset_TFs <- subset(data4,`veA, wt, TSA/ctrl` == 0 & `veA, pxdA-KO vs wt, ctrl` == 1 & `veA, hookA-KO vs wt, ctrl` == 1)
+
+gene_list <- list(unlist(c(input_up[1],input_down[1])),
+                  unlist(c(input_up[2],input_down[2])),
+                  unlist(c(input_up[3],input_down[3])),
+                  col1_upset_TFs$ID,
+                  col2_upset_TFs$ID
+               )
+
+for(i in 1:length(name_list)) {
+  
+  # make a plot and export results
+  run_go(name = name_list[i],
+         gene_list = gene_list[[i]])
+  
+}
+
+# there wasn't anything that interesting that came up from these lists, so I am going to export the lists of TFs instead
+# add gene symbols and descriptions
+complete_genes <- complete_genes[,c("gene",
+                                    "symbol",
+                                    "name")]
+data5 <- merge(data4, complete_genes,
+               by.x="ID", by.y="gene",
+               all.x=TRUE)
+write.csv(data5,paste0(subDir,"/DE_TFs_for_figure.csv"),row.names=FALSE)
+
+# plot volcano plot for these TFs of interest for pxdA and hookA vs wild type in the control condition in prism
+
+```
+
+
